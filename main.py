@@ -12,7 +12,6 @@ from threading import Thread
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
-from pyrogram.errors import UserNotParticipant
 from flask import Flask
 from dotenv import load_dotenv
 
@@ -62,6 +61,7 @@ except IOError:
 
 # ---- TMDB API FUNCTIONS ----
 def search_tmdb(query: str):
+    """Searches TMDB for movies/TV shows and returns up to 5 valid results."""
     year = None
     match = re.search(r'(.+?)\s*\(?(\d{4})\)?$', query)
     if match:
@@ -83,6 +83,7 @@ def search_tmdb(query: str):
         return []
 
 def get_tmdb_details(media_type: str, media_id: int):
+    """Fetches full details for a specific movie/TV show ID."""
     try:
         details_url = f"https://api.themoviedb.org/3/{media_type}/{media_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos"
         response = requests.get(details_url)
@@ -94,6 +95,7 @@ def get_tmdb_details(media_type: str, media_id: int):
 
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
+    """Generates a clean, formatted text caption."""
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     rating = f"⭐ {round(data.get('vote_average', 0), 1)}/10"
@@ -112,6 +114,7 @@ def generate_formatted_caption(data: dict):
     )
 
 def generate_html(data: dict, links: dict):
+    """Generates a robust, Blogger-friendly HTML snippet."""
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     rating = round(data.get("vote_average", 0), 1)
@@ -134,11 +137,12 @@ def generate_html(data: dict, links: dict):
 <div class="movie-details"><p><b>Genre:</b> {genres}</p><p><b>Rating:</b> ⭐ {rating}/10</p><p><b>Overview:</b> {overview}</p></div>
 </div>
 <div class="backdrop-container"><a href="{backdrop}" target="_blank"><img src="{backdrop}" alt="{title} Backdrop"/></a></div>
-<div class="action-buttons">{trailer_button}{download_buttons or '<!-- No download links -->'}</div>
+<div class="action-buttons">{trailer_button}{download_buttons or '<!-- No download links provided -->'}</div>
 </div>
 """
 
 def generate_image(data: dict):
+    """Generates a custom promotional image."""
     try:
         poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get('poster_path') else None
         if not poster_url: return None
@@ -195,7 +199,7 @@ async def set_channel_command(_, message: Message):
         user_channels[message.from_user.id] = message.command[1]
         await message.reply_text(f"✅ Channel set to `{message.command[1]}`.")
     else:
-        await message.reply_text("Usage: `/setchannel @yourchannel`")
+        await message.reply_text("Usage: `/setchannel @yourchannel` or channel ID.")
 
 @bot.on_message(filters.command("cancel") & filters.private)
 async def cancel_command(_, message: Message):
@@ -219,7 +223,7 @@ async def text_handler(client, message: Message):
 
     buttons = [
         [InlineKeyboardButton(
-            f"{'🎬' if r['media_type'] == 'movie' else '📺'} {r.get('title') or r.get('name')} ({(r.get('release_date') or r.get('first_air_date') or '').split('-')[0]})",
+            f"{'🎬' if r['media_type'] == 'movie' else '📺'} {r.get('title') or r.get('name')} ({(r.get('release_date') or r.get('first_air_date') or '----').split('-')[0]})",
             callback_data=f"select_{r['media_type']}_{r['id']}"
         )] for r in results
     ]
@@ -255,7 +259,7 @@ async def link_conversation_handler(client, message: Message):
         await message.reply_text("⚠️ Invalid URL. Send a valid link or type `skip`.")
         return
         
-    next_state, quality = None, None
+    next_state, quality, next_prompt = None, None, None
     if state == "wait_480p":
         quality, next_state, next_prompt = "480p", "wait_720p", "720p"
     elif state == "wait_720p":
@@ -263,7 +267,7 @@ async def link_conversation_handler(client, message: Message):
     elif state == "wait_1080p":
         quality, next_state = "1080p", "generate"
 
-    if text.lower() != 'skip': convo["links"][quality] = text
+    if quality and text.lower() != 'skip': convo["links"][quality] = text
     convo["state"] = next_state
 
     if next_state == "generate":
@@ -277,7 +281,6 @@ async def generate_final_content(client, user_id, chat_id, msg):
     if not convo: return
     
     details = convo["details"]
-    # Filter out None values from links
     links = {q: url for q, url in convo["links"].items() if url}
 
     await msg.edit_text("📝 Generating caption & HTML...")
@@ -321,10 +324,14 @@ async def final_action_callback(client, cb):
     if action == "get_html":
         await cb.answer()
         html_code = generated["html"]
-        title = (convo["details"].get("title") or convo["details"].get("name") or "post").replace(" ", "_")
-        html_file = io.BytesIO(html_code.encode('utf-8'))
-        html_file.name = f"{title}.html"
-        await client.send_document(cb.message.chat.id, document=html_file, caption="Here is your HTML file.")
+        if len(html_code) > 4000:
+            await client.send_message(cb.message.chat.id, "⚠️ The HTML code is too long for a message. Sending it as a file.")
+            title = (convo["details"].get("title") or convo["details"].get("name") or "post").replace(" ", "_")
+            html_file = io.BytesIO(html_code.encode('utf-8'))
+            html_file.name = f"{title}.html"
+            await client.send_document(cb.message.chat.id, document=html_file, caption="Here is your HTML file.")
+        else:
+            await client.send_message(cb.message.chat.id, f"```html\n{html_code}\n```", parse_mode=enums.ParseMode.MARKDOWN)
 
     elif action == "get_caption":
         await cb.answer()
