@@ -1,14 +1,19 @@
 import os
+import io
 import requests
 from pyrogram import Client, filters
 from flask import Flask
 from threading import Thread
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # ---- CONFIG ----
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # তোমার BotFather টোকেন
-API_ID = int(os.getenv("API_ID"))   # তোমার Telegram API ID
-API_HASH = os.getenv("API_HASH")    # তোমার Telegram API Hash
-TMDB_API_KEY = os.getenv("TMDB_API_KEY")  # TMDb API Key
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 
 app = Flask(__name__)
 bot = Client("moviebot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -16,7 +21,7 @@ bot = Client("moviebot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 # ---- SERVER KEEP ALIVE ----
 @app.route('/')
 def home():
-    return "Movie Bot is running!"
+    return "✅ Movie Bot is Running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -27,7 +32,7 @@ Thread(target=run).start()
 def get_movie_details(movie_name):
     url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&query={movie_name}"
     response = requests.get(url).json()
-    if response["results"]:
+    if response.get("results"):
         data = response["results"][0]
         movie_id = data["id"]
         details_url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=en-US"
@@ -41,7 +46,7 @@ def generate_html(movie):
     year = movie.get("release_date", "N/A")[:4]
     rating = movie.get("vote_average", "N/A")
     overview = movie.get("overview", "No overview available.")
-    genres = ", ".join([g["name"] for g in movie.get("genres", [])])
+    genres = ", ".join([g["name"] for g in movie.get("genres", [])]) or "N/A"
     poster = f"https://image.tmdb.org/t/p/w500{movie.get('poster_path', '')}"
     backdrop = f"https://image.tmdb.org/t/p/original{movie.get('backdrop_path', '')}"
 
@@ -84,11 +89,11 @@ def generate_html(movie):
 
 <div class="movie-card">
   <h2>🎬 {title} ({year})</h2>
-  <img class="poster" src="{poster}"/>
+  <img class="poster" src="{poster}" alt="{title} Poster"/>
   <p><b>Genre:</b> {genres}</p>
   <p><b>IMDB:</b> ⭐ {rating}/10</p>
   <p><b>Overview:</b> {overview}</p>
-  <img src="{backdrop}" width="100%" style="border-radius:10px;margin-top:10px;"/>
+  <img src="{backdrop}" width="100%" style="border-radius:10px;margin-top:10px;" alt="Backdrop"/>
   <div class="download-buttons">
     <a href="#">🔽 480p Download</a>
     <a href="#">🎥 720p Download</a>
@@ -98,10 +103,10 @@ def generate_html(movie):
 """
     return html
 
-# ---- COMMAND ----
+# ---- MOVIE SEARCH HANDLER ----
 @bot.on_message(filters.private & ~filters.command("start"))
 async def movie_info(client, message):
-    movie_name = message.text
+    movie_name = message.text.strip()
     await message.reply_text("🎬 Fetching movie details, please wait...")
 
     movie = get_movie_details(movie_name)
@@ -110,13 +115,17 @@ async def movie_info(client, message):
         return
 
     html_code = generate_html(movie)
+
     await message.reply_text(
-        f"✅ Here's your Blogger HTML post for <b>{movie.get('title')}</b>!\n\n"
-        "<i>Just copy this and paste it in Blogger HTML mode.</i>",
-        reply_markup=None
+        f"✅ Here's your Blogger HTML post for **{movie.get('title')}**!\n\n"
+        "_Just copy this and paste it in Blogger HTML mode._"
     )
+
+    file = io.BytesIO(html_code.encode('utf-8'))
+    file.name = "movie_post.html"
+
     await message.reply_document(
-        ("movie_post.html", html_code.encode("utf-8")),
+        document=file,
         caption="💾 Copy this HTML and paste into Blogger!"
     )
 
