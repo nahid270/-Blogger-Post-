@@ -32,8 +32,8 @@ if not all([BOT_TOKEN, API_ID, API_HASH, TMDB_API_KEY]):
 API_ID = int(API_ID)
 
 # ---- GLOBAL VARIABLES for state management ----
-user_conversations = {} 
-user_channels = {}      
+user_conversations = {}
+user_channels = {}
 
 # ---- FLASK APP FOR KEEP-ALIVE ----
 app = Flask(__name__)
@@ -101,24 +101,33 @@ def generate_formatted_caption(data: dict):
     overview = data.get("overview", "N/A")
     director = next((member["name"] for member in data.get("credits", {}).get("crew", []) if member.get("job") == "Director"), "N/A")
     cast = ", ".join([actor["name"] for actor in data.get("credits", {}).get("cast", [])[:5]] or ["N/A"])
+    # <<< NEW: Add language to caption if available >>>
+    language = data.get('language', data.get('original_language', '')).upper()
 
-    return (
+    caption_text = (
         f"🎬 **{title} ({year})**\n\n"
         f"**Rating:** {rating}\n"
         f"**Genres:** {genres}\n"
+    )
+    if language:
+        caption_text += f"**Language:** {language.title()}\n"
+        
+    caption_text += (
         f"**Director:** {director}\n"
         f"**Cast:** {cast}\n\n"
         f"**Plot:** _{overview[:500]}{'...' if len(overview) > 500 else ''}_"
     )
+    return caption_text
 
+# <<< MODIFIED: Function updated with new button styles and language badge >>>
 def generate_html(data: dict, links: list):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     rating = data.get('vote_average', 'N/A')
     overview = data.get("overview", "No overview available.")
     genres = ", ".join([g["name"] for g in data.get("genres", [])] or ["N/A"])
-    
-    # <<< MODIFIED: Handle manual poster for HTML (uses a placeholder) >>>
+    language = data.get('language', data.get('original_language', '')).upper()
+
     if data.get("manual_poster"):
         poster_url = "https://via.placeholder.com/400x600.png?text=Manual+Poster"
     elif data.get('poster_path'):
@@ -128,7 +137,71 @@ def generate_html(data: dict, links: list):
 
     backdrop_url = f"https://image.tmdb.org/t/p/original{data['backdrop_path']}" if data.get('backdrop_path') else ""
 
-    movie_info_html = f"""<div class="movie-info-section"><h3>Movie Information</h3><p><strong>Full Name:</strong> {title}</p><p><strong>Release Year:</strong> {year}</p><p><strong>Genres:</strong> {genres}</p><p><strong>Rating:</strong> ⭐ {rating}/10</p></div>"""
+    # --- CSS Styles for better look ---
+    css_styles = """
+<style>
+    @keyframes rgb-glow {
+        0% { border-color: red; box-shadow: 0 0 10px red; }
+        15% { border-color: orange; box-shadow: 0 0 10px orange; }
+        30% { border-color: yellow; box-shadow: 0 0 10px yellow; }
+        45% { border-color: lime; box-shadow: 0 0 10px lime; }
+        60% { border-color: cyan; box-shadow: 0 0 10px cyan; }
+        75% { border-color: blue; box-shadow: 0 0 10px blue; }
+        90% { border-color: magenta; box-shadow: 0 0 10px magenta; }
+        100% { border-color: red; box-shadow: 0 0 10px red; }
+    }
+    .download-section ul {
+        list-style: none;
+        padding: 0;
+        text-align: center; /* Center the buttons */
+    }
+    .download-section li {
+        margin: 10px 0;
+    }
+    .download-button {
+        display: inline-block;
+        padding: 12px 25px;
+        font-size: 16px;
+        font-weight: bold;
+        color: white;
+        background-color: #1a2a40;
+        border: 2px solid;
+        border-radius: 8px;
+        text-decoration: none;
+        transition: transform 0.2s;
+        animation: rgb-glow 4s linear infinite; /* Apply RGB animation */
+    }
+    .download-button:hover {
+        transform: scale(1.05);
+    }
+    .poster-container {
+        position: relative; /* Needed for positioning the badge */
+        display: inline-block; /* To wrap the image */
+    }
+    .language-badge {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 14px;
+        font-weight: bold;
+    }
+</style>
+"""
+
+    poster_html = f'<div class="poster-container"><img src="{poster_url}" alt="{title} Poster" style="max-width: 350px; height: auto; border-radius: 8px; display: block; border: 2px solid #ddd;">'
+    if language:
+        poster_html += f'<span class="language-badge">{language}</span>'
+    poster_html += '</div>'
+
+    movie_info_html = f"""<div class="movie-info-section"><h3>Movie Information</h3><p><strong>Full Name:</strong> {title}</p><p><strong>Release Year:</strong> {year}</p><p><strong>Genres:</strong> {genres}</p><p><strong>Rating:</strong> ⭐ {rating}/10</p>"""
+    if language:
+        movie_info_html += f"""<p><strong>Language:</strong> {language.title()}</p>"""
+    movie_info_html += "</div>"
+    
     storyline_html = f"""<div class="storyline-section"><h3>Storyline</h3><p>{overview}</p></div>"""
     screenshots_html = ""
     if backdrop_url:
@@ -136,22 +209,22 @@ def generate_html(data: dict, links: list):
     
     download_buttons_html = ""
     if links:
-        link_items = "".join([f'<li><a href="{link['url']}" target="_blank" rel="noopener noreferrer" class="button download-button">🔽 {link["label"]}</a></li>' for link in links])
+        link_items = "".join([f'<li><a href="{link['url']}" target="_blank" rel="noopener noreferrer" class="download-button">🔽 {link["label"]}</a></li>' for link in links])
         download_buttons_html = f"""<div class="download-section"><h3>Download Links</h3><ul>{link_items}</ul></div>"""
     
-    return f"""<!-- Generated by Movie Bot - Professional Layout --><div class="movie-post-container" style="text-align: left;"><h2 style="text-align: center;">{title} ({year})</h2><p style="text-align: center;"><img src="{poster_url}" alt="{title} Poster" style="max-width: 350px; height: auto; border-radius: 8px; margin: 0 auto; display: block; border: 2px solid #ddd;"></p>{movie_info_html}{storyline_html}{screenshots_html}{download_buttons_html}</div>"""
+    return f"""{css_styles}<!-- Generated by Movie Bot - Professional Layout --><div class="movie-post-container" style="text-align: left;"><h2 style="text-align: center;">{title} ({year})</h2><p style="text-align: center;">{poster_html}</p>{movie_info_html}{storyline_html}{screenshots_html}{download_buttons_html}</div>"""
 
+# <<< MODIFIED: Function updated to add language badge to the image >>>
 def generate_image(data: dict):
     try:
-        # <<< MODIFIED: Handle manual poster or TMDB poster >>>
         if data.get("manual_poster"):
             poster_img = Image.open(data["manual_poster"]).convert("RGBA").resize((400, 600))
         elif data.get('poster_path'):
             poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
             poster_img = Image.open(io.BytesIO(requests.get(poster_url).content)).convert("RGBA").resize((400, 600))
         else:
-            return None # No poster available at all
-        
+            return None
+
         if data.get('backdrop_path'):
             backdrop_url = f"https://image.tmdb.org/t/p/w1280{data['backdrop_path']}"
             bg_img = Image.open(io.BytesIO(requests.get(backdrop_url).content)).convert("RGBA").resize((1280, 720))
@@ -170,17 +243,22 @@ def generate_image(data: dict):
                     flag_img.thumbnail((65, 65))
                     poster_img.paste(flag_img, (poster_img.width - flag_img.width - 10, 10), flag_img)
                 except Exception as e: print(f"Could not add flag for {country_code}: {e}")
-
-        lang_code = data.get('original_language', '').upper()
+        
+        # --- Language Badge Logic ---
+        # Prioritize manual language, then fall back to API language
+        lang_code = data.get('language', data.get('original_language', '')).upper()
         if lang_code:
             try:
-                badge_size = (60, 30)
+                badge_size = (len(lang_code) * 12 + 20, 30) # Dynamic width
                 badge = Image.new('RGBA', badge_size, (10, 10, 20, 180))
                 draw_badge = ImageDraw.Draw(badge)
-                text_bbox = draw_badge.textbbox((0, 0), lang_code, font=FONT_BADGE)
+                # Use a smaller font for the badge
+                badge_font = ImageFont.truetype("Poppins-Bold.ttf", 16)
+                text_bbox = draw_badge.textbbox((0, 0), lang_code, font=badge_font)
                 text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
                 text_x, text_y = (badge_size[0] - text_width) / 2, (badge_size[1] - text_height) / 2
-                draw_badge.text((text_x, text_y-2), lang_code, font=FONT_BADGE, fill="#FFFFFF")
+                draw_badge.text((text_x, text_y-2), lang_code, font=badge_font, fill="#FFFFFF")
+                # Paste on top left
                 poster_img.paste(badge, (10, 10), badge)
             except Exception as e: print(f"Could not add language badge for {lang_code}: {e}")
         
@@ -211,7 +289,6 @@ def generate_image(data: dict):
 # ---- BOT HANDLERS ----
 @bot.on_message(filters.command("start") & filters.private)
 async def start_command(_, message: Message):
-    # <<< MODIFIED: Added /manual command to help text >>>
     await message.reply_text(
         "👋 **Welcome to the Movie & Series Bot!**\n\n"
         "Send me a movie or series name to get started, or use the commands below.\n\n"
@@ -237,13 +314,12 @@ async def cancel_command(_, message: Message):
     else:
         await message.reply_text("👍 Nothing to cancel.")
 
-# <<< NEW: Command to start manual entry process >>>
 @bot.on_message(filters.command("manual") & filters.private)
 async def manual_add_command(client, message: Message):
     user_id = message.from_user.id
     user_conversations[user_id] = {
         "state": "manual_wait_title",
-        "details": {}, # Start with an empty dict to fill
+        "details": {},
         "links": []
     }
     await message.reply_text(
@@ -251,13 +327,11 @@ async def manual_add_command(client, message: Message):
         "First, please send me the **Title** of the movie or series."
     )
 
-# <<< MODIFIED: Main text handler now routes to different conversation handlers >>>
 @bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual"]))
 async def text_handler(client, message: Message):
     user_id = message.from_user.id
     convo = user_conversations.get(user_id)
 
-    # Check if user is in an active conversation
     if convo and convo.get("state") != "done":
         state = convo.get("state", "")
         if state.startswith("manual_"):
@@ -267,7 +341,6 @@ async def text_handler(client, message: Message):
             await link_conversation_handler(client, message)
             return
 
-    # If no active conversation, perform a search
     processing_msg = await message.reply_text("🔍 Searching for content...")
     results = search_tmdb(message.text.strip())
     if not results:
@@ -281,7 +354,6 @@ async def text_handler(client, message: Message):
     buttons = [[InlineKeyboardButton(f"{'🎬' if r['media_type'] == 'movie' else '📺'} {r.get('title') or r.get('name')} ({(r.get('release_date') or r.get('first_air_date') or '----').split('-')[0]})", callback_data=f"select_{r['media_type']}_{r['id']}")] for r in results]
     await processing_msg.edit_text("**👇 Please choose the correct one from the search results:**", reply_markup=InlineKeyboardMarkup(buttons))
 
-# <<< NEW: Handler for receiving the poster image during manual entry >>>
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
     user_id = message.from_user.id
@@ -291,9 +363,8 @@ async def photo_handler(client, message: Message):
 
     await message.reply_text("🖼️ Poster received, processing...")
     photo_file = await client.download_media(message.photo.file_id, in_memory=True)
-    convo["details"]["manual_poster"] = photo_file # Store the image bytes directly
+    convo["details"]["manual_poster"] = photo_file
     
-    # After getting the poster, all manual data is collected. Now ask for links.
     convo["state"] = "ask_links_after_manual"
     buttons = [[InlineKeyboardButton("✅ Yes, add links", callback_data=f"addlink_yes_{user_id}")], [InlineKeyboardButton("❌ No, skip and generate", callback_data=f"addlink_no_{user_id}")]]
     await message.reply_text(
@@ -357,7 +428,7 @@ async def link_conversation_handler(client, message: Message):
         buttons = [[InlineKeyboardButton("➕ Add Another Link", callback_data=f"addlink_yes_{user_id}")], [InlineKeyboardButton("✅ Done, Generate Post", callback_data=f"addlink_no_{user_id}")]]
         await message.reply_text(f"✅ Link added successfully!\n\nDo you want to add another link?", reply_markup=InlineKeyboardMarkup(buttons))
 
-# <<< NEW: Conversation handler specifically for manual data entry >>>
+# <<< MODIFIED: Manual conversation handler updated with a new step for Language >>>
 async def manual_conversation_handler(client, message: Message):
     user_id = message.from_user.id
     convo = user_conversations.get(user_id)
@@ -372,7 +443,7 @@ async def manual_conversation_handler(client, message: Message):
     elif state == "manual_wait_year":
         if not text.isdigit() or len(text) != 4:
             return await message.reply_text("⚠️ Invalid year. Please send a 4-digit year (e.g., `2023`).")
-        convo["details"]["release_date"] = f"{text}-01-01" # Mock date for year extraction
+        convo["details"]["release_date"] = f"{text}-01-01"
         convo["state"] = "manual_wait_overview"
         await message.reply_text("✅ **Year set.**\n\nNow, please send the **Plot/Overview**.")
 
@@ -391,10 +462,17 @@ async def manual_conversation_handler(client, message: Message):
         try:
             rating = "N/A" if text.upper() == "N/A" else round(float(text), 1)
             convo["details"]["vote_average"] = rating
-            convo["state"] = "manual_wait_poster"
-            await message.reply_text("✅ **Rating set.**\n\nFinally, please send the **Poster Image** for this content.")
+            # <<< NEW: Ask for language after rating >>>
+            convo["state"] = "manual_wait_language"
+            await message.reply_text("✅ **Rating set.**\n\nNow, send the **Language** of the content (e.g., `English`, `Hindi`).")
         except ValueError:
             await message.reply_text("⚠️ Invalid rating. Please send a number (e.g., `7.8`) or `N/A`.")
+    
+    # <<< NEW: State to handle language input >>>
+    elif state == "manual_wait_language":
+        convo["details"]["language"] = text
+        convo["state"] = "manual_wait_poster"
+        await message.reply_text("✅ **Language set.**\n\nFinally, please send the **Poster Image** for this content.")
 
 
 async def generate_final_content(client, user_id, msg_to_edit: Message):
@@ -471,6 +549,6 @@ async def final_action_callback(client, cb):
 
 # ---- START THE BOT ----
 if __name__ == "__main__":
-    print("🚀 Bot is starting... Manual Entry Feature Added.")
+    print("🚀 Bot is starting... Manual Entry & Style Feature Added.")
     bot.run()
     print("👋 Bot has stopped.")
