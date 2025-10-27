@@ -93,6 +93,7 @@ def get_tmdb_details(media_type: str, media_id: int):
         return None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
+# <<< MODIFIED: Caption generation to prioritize custom language >>>
 def generate_formatted_caption(data: dict):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
@@ -101,8 +102,9 @@ def generate_formatted_caption(data: dict):
     overview = data.get("overview", "N/A")
     director = next((member["name"] for member in data.get("credits", {}).get("crew", []) if member.get("job") == "Director"), "N/A")
     cast = ", ".join([actor["name"] for actor in data.get("credits", {}).get("cast", [])[:5]] or ["N/A"])
-    # <<< NEW: Add language to caption if available >>>
-    language = data.get('language', data.get('original_language', '')).upper()
+    
+    # Use custom language if provided, otherwise fallback
+    language = data.get('custom_language', data.get('original_language', '')).title()
 
     caption_text = (
         f"🎬 **{title} ({year})**\n\n"
@@ -110,7 +112,7 @@ def generate_formatted_caption(data: dict):
         f"**Genres:** {genres}\n"
     )
     if language:
-        caption_text += f"**Language:** {language.title()}\n"
+        caption_text += f"**Language:** {language}\n"
         
     caption_text += (
         f"**Director:** {director}\n"
@@ -119,14 +121,14 @@ def generate_formatted_caption(data: dict):
     )
     return caption_text
 
-# <<< MODIFIED: Function updated with new button styles and language badge >>>
+# <<< MODIFIED: HTML generation to prioritize custom language and enhance styles >>>
 def generate_html(data: dict, links: list):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     rating = data.get('vote_average', 'N/A')
     overview = data.get("overview", "No overview available.")
     genres = ", ".join([g["name"] for g in data.get("genres", [])] or ["N/A"])
-    language = data.get('language', data.get('original_language', '')).upper()
+    language = data.get('custom_language', data.get('original_language', '')).title()
 
     if data.get("manual_poster"):
         poster_url = "https://via.placeholder.com/400x600.png?text=Manual+Poster"
@@ -137,58 +139,17 @@ def generate_html(data: dict, links: list):
 
     backdrop_url = f"https://image.tmdb.org/t/p/original{data['backdrop_path']}" if data.get('backdrop_path') else ""
 
-    # --- CSS Styles for better look ---
     css_styles = """
 <style>
     @keyframes rgb-glow {
-        0% { border-color: red; box-shadow: 0 0 10px red; }
-        15% { border-color: orange; box-shadow: 0 0 10px orange; }
-        30% { border-color: yellow; box-shadow: 0 0 10px yellow; }
-        45% { border-color: lime; box-shadow: 0 0 10px lime; }
-        60% { border-color: cyan; box-shadow: 0 0 10px cyan; }
-        75% { border-color: blue; box-shadow: 0 0 10px blue; }
-        90% { border-color: magenta; box-shadow: 0 0 10px magenta; }
-        100% { border-color: red; box-shadow: 0 0 10px red; }
+        0% { border-color: red; box-shadow: 0 0 10px red; } 15% { border-color: orange; box-shadow: 0 0 10px orange; } 30% { border-color: yellow; box-shadow: 0 0 10px yellow; } 45% { border-color: lime; box-shadow: 0 0 10px lime; } 60% { border-color: cyan; box-shadow: 0 0 10px cyan; } 75% { border-color: blue; box-shadow: 0 0 10px blue; } 90% { border-color: magenta; box-shadow: 0 0 10px magenta; } 100% { border-color: red; box-shadow: 0 0 10px red; }
     }
-    .download-section ul {
-        list-style: none;
-        padding: 0;
-        text-align: center; /* Center the buttons */
-    }
-    .download-section li {
-        margin: 10px 0;
-    }
-    .download-button {
-        display: inline-block;
-        padding: 12px 25px;
-        font-size: 16px;
-        font-weight: bold;
-        color: white;
-        background-color: #1a2a40;
-        border: 2px solid;
-        border-radius: 8px;
-        text-decoration: none;
-        transition: transform 0.2s;
-        animation: rgb-glow 4s linear infinite; /* Apply RGB animation */
-    }
-    .download-button:hover {
-        transform: scale(1.05);
-    }
-    .poster-container {
-        position: relative; /* Needed for positioning the badge */
-        display: inline-block; /* To wrap the image */
-    }
-    .language-badge {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        background-color: rgba(0, 0, 0, 0.7);
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-size: 14px;
-        font-weight: bold;
-    }
+    .download-section ul { list-style: none; padding: 0; text-align: center; }
+    .download-section li { margin: 10px 0; }
+    .download-button { display: inline-block; padding: 12px 25px; font-size: 16px; font-weight: bold; color: white; background-color: #1a2a40; border: 2px solid; border-radius: 8px; text-decoration: none; transition: transform 0.2s; animation: rgb-glow 4s linear infinite; }
+    .download-button:hover { transform: scale(1.05); }
+    .poster-container { position: relative; display: inline-block; }
+    .language-badge { position: absolute; top: 10px; left: 10px; background-color: #FF007F; /* Hot Pink */ color: white; padding: 5px 12px; border-radius: 5px; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px black; border: 1px solid #fff; }
 </style>
 """
 
@@ -199,7 +160,7 @@ def generate_html(data: dict, links: list):
 
     movie_info_html = f"""<div class="movie-info-section"><h3>Movie Information</h3><p><strong>Full Name:</strong> {title}</p><p><strong>Release Year:</strong> {year}</p><p><strong>Genres:</strong> {genres}</p><p><strong>Rating:</strong> ⭐ {rating}/10</p>"""
     if language:
-        movie_info_html += f"""<p><strong>Language:</strong> {language.title()}</p>"""
+        movie_info_html += f"""<p><strong>Language:</strong> {language}</p>"""
     movie_info_html += "</div>"
     
     storyline_html = f"""<div class="storyline-section"><h3>Storyline</h3><p>{overview}</p></div>"""
@@ -212,9 +173,9 @@ def generate_html(data: dict, links: list):
         link_items = "".join([f'<li><a href="{link['url']}" target="_blank" rel="noopener noreferrer" class="download-button">🔽 {link["label"]}</a></li>' for link in links])
         download_buttons_html = f"""<div class="download-section"><h3>Download Links</h3><ul>{link_items}</ul></div>"""
     
-    return f"""{css_styles}<!-- Generated by Movie Bot - Professional Layout --><div class="movie-post-container" style="text-align: left;"><h2 style="text-align: center;">{title} ({year})</h2><p style="text-align: center;">{poster_html}</p>{movie_info_html}{storyline_html}{screenshots_html}{download_buttons_html}</div>"""
+    return f"""{css_styles}<!-- Generated by Movie Bot --><div class="movie-post-container" style="text-align: left;"><h2 style="text-align: center;">{title} ({year})</h2><p style="text-align: center;">{poster_html}</p>{movie_info_html}{storyline_html}{screenshots_html}{download_buttons_html}</div>"""
 
-# <<< MODIFIED: Function updated to add language badge to the image >>>
+# <<< MODIFIED: Image generation to use custom language for the badge >>>
 def generate_image(data: dict):
     try:
         if data.get("manual_poster"):
@@ -234,33 +195,25 @@ def generate_image(data: dict):
         else:
             bg_img = Image.new('RGBA', (1280, 720), (10, 10, 20))
 
-        if data.get('production_countries'):
-            country_code = data['production_countries'][0].get('iso_3166_1', '').lower()
-            if country_code:
-                try:
-                    flag_url = f"https://flagcdn.com/w80/{country_code}.png"
-                    flag_img = Image.open(io.BytesIO(requests.get(flag_url).content)).convert("RGBA")
-                    flag_img.thumbnail((65, 65))
-                    poster_img.paste(flag_img, (poster_img.width - flag_img.width - 10, 10), flag_img)
-                except Exception as e: print(f"Could not add flag for {country_code}: {e}")
-        
-        # --- Language Badge Logic ---
-        # Prioritize manual language, then fall back to API language
-        lang_code = data.get('language', data.get('original_language', '')).upper()
-        if lang_code:
+        # --- Custom Language Badge Logic ---
+        lang_text = data.get('custom_language', '').title()
+        if lang_text:
             try:
-                badge_size = (len(lang_code) * 12 + 20, 30) # Dynamic width
-                badge = Image.new('RGBA', badge_size, (10, 10, 20, 180))
-                draw_badge = ImageDraw.Draw(badge)
-                # Use a smaller font for the badge
-                badge_font = ImageFont.truetype("Poppins-Bold.ttf", 16)
-                text_bbox = draw_badge.textbbox((0, 0), lang_code, font=badge_font)
+                badge_font = ImageFont.truetype("Poppins-Bold.ttf", 18)
+                # Calculate text size to make badge dynamic
+                text_bbox = ImageDraw.Draw(Image.new('RGB', (1,1))).textbbox((0, 0), lang_text, font=badge_font)
                 text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
+
+                badge_size = (text_width + 20, text_height + 10) # 10px padding
+                badge = Image.new('RGBA', badge_size, (255, 0, 127, 200)) # Hot Pink with transparency
+                draw_badge = ImageDraw.Draw(badge)
+                
                 text_x, text_y = (badge_size[0] - text_width) / 2, (badge_size[1] - text_height) / 2
-                draw_badge.text((text_x, text_y-2), lang_code, font=badge_font, fill="#FFFFFF")
-                # Paste on top left
+                draw_badge.text((text_x, text_y-2), lang_text, font=badge_font, fill="#FFFFFF")
+                
+                # Paste on top left corner of the poster
                 poster_img.paste(badge, (10, 10), badge)
-            except Exception as e: print(f"Could not add language badge for {lang_code}: {e}")
+            except Exception as e: print(f"Could not add custom language badge: {e}")
         
         bg_img.paste(poster_img, (50, 60), poster_img)
         draw = ImageDraw.Draw(bg_img)
@@ -298,6 +251,7 @@ async def start_command(_, message: Message):
         "`/cancel` - Cancel the current operation."
     )
 
+# ... (setchannel and cancel commands remain the same) ...
 @bot.on_message(filters.command("setchannel") & filters.private)
 async def set_channel_command(_, message: Message):
     if len(message.command) > 1:
@@ -314,6 +268,7 @@ async def cancel_command(_, message: Message):
     else:
         await message.reply_text("👍 Nothing to cancel.")
 
+
 @bot.on_message(filters.command("manual") & filters.private)
 async def manual_add_command(client, message: Message):
     user_id = message.from_user.id
@@ -327,6 +282,7 @@ async def manual_add_command(client, message: Message):
         "First, please send me the **Title** of the movie or series."
     )
 
+# <<< MODIFIED: Main text handler to include the new language step >>>
 @bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual"]))
 async def text_handler(client, message: Message):
     user_id = message.from_user.id
@@ -337,10 +293,15 @@ async def text_handler(client, message: Message):
         if state.startswith("manual_"):
             await manual_conversation_handler(client, message)
             return
+        # <<< NEW: State to handle custom language input >>>
+        elif state == "wait_custom_language":
+            await language_conversation_handler(client, message)
+            return
         elif state in ["wait_link_label", "wait_link_url"]:
             await link_conversation_handler(client, message)
             return
 
+    # If no active conversation, perform a search
     processing_msg = await message.reply_text("🔍 Searching for content...")
     results = search_tmdb(message.text.strip())
     if not results:
@@ -354,6 +315,7 @@ async def text_handler(client, message: Message):
     buttons = [[InlineKeyboardButton(f"{'🎬' if r['media_type'] == 'movie' else '📺'} {r.get('title') or r.get('name')} ({(r.get('release_date') or r.get('first_air_date') or '----').split('-')[0]})", callback_data=f"select_{r['media_type']}_{r['id']}")] for r in results]
     await processing_msg.edit_text("**👇 Please choose the correct one from the search results:**", reply_markup=InlineKeyboardMarkup(buttons))
 
+# <<< MODIFIED: After getting poster in manual mode, ask for language >>>
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
     user_id = message.from_user.id
@@ -365,14 +327,14 @@ async def photo_handler(client, message: Message):
     photo_file = await client.download_media(message.photo.file_id, in_memory=True)
     convo["details"]["manual_poster"] = photo_file
     
-    convo["state"] = "ask_links_after_manual"
-    buttons = [[InlineKeyboardButton("✅ Yes, add links", callback_data=f"addlink_yes_{user_id}")], [InlineKeyboardButton("❌ No, skip and generate", callback_data=f"addlink_no_{user_id}")]]
+    # <<< NEW: Transition to wait for language input >>>
+    convo["state"] = "wait_custom_language"
     await message.reply_text(
         "✅ All manual data collected successfully!\n\n"
-        "**🔗 Add Download Links?**",
-        reply_markup=InlineKeyboardMarkup(buttons)
+        "**🗣️ Now, please enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`)."
     )
 
+# <<< MODIFIED: After selecting from TMDB, ask for language >>>
 @bot.on_callback_query(filters.regex("^select_"))
 async def selection_callback(client, cb):
     await cb.answer("Fetching details, please wait...", show_alert=False)
@@ -386,9 +348,14 @@ async def selection_callback(client, cb):
     user_id = cb.from_user.id
     user_conversations[user_id] = {"details": details, "links": []}
 
-    buttons = [[InlineKeyboardButton("✅ Yes, add links", callback_data=f"addlink_yes_{user_id}")], [InlineKeyboardButton("❌ No, skip and generate", callback_data=f"addlink_no_{user_id}")]]
-    await cb.message.edit_text("**🔗 Add Download Links?**\n\nDo you want to add any download links to this post?", reply_markup=InlineKeyboardMarkup(buttons))
+    # <<< NEW: Ask for custom language instead of links directly >>>
+    user_conversations[user_id]["state"] = "wait_custom_language"
+    await cb.message.edit_text(
+        "✅ Details fetched successfully!\n\n"
+        "**🗣️ Please enter the language for this post** (e.g., `Hindi Dubbed`, `English`, `Dual Audio`)."
+    )
 
+# ... (add_link_callback and link_conversation_handler remain the same) ...
 @bot.on_callback_query(filters.regex("^addlink_"))
 async def add_link_callback(client, cb):
     action, user_id_str = cb.data.rsplit("_", 1)
@@ -428,7 +395,25 @@ async def link_conversation_handler(client, message: Message):
         buttons = [[InlineKeyboardButton("➕ Add Another Link", callback_data=f"addlink_yes_{user_id}")], [InlineKeyboardButton("✅ Done, Generate Post", callback_data=f"addlink_no_{user_id}")]]
         await message.reply_text(f"✅ Link added successfully!\n\nDo you want to add another link?", reply_markup=InlineKeyboardMarkup(buttons))
 
-# <<< MODIFIED: Manual conversation handler updated with a new step for Language >>>
+# <<< NEW: Conversation handler for custom language >>>
+async def language_conversation_handler(client, message: Message):
+    user_id = message.from_user.id
+    convo = user_conversations.get(user_id)
+    if not convo: return
+
+    # Save the custom language provided by the user
+    convo["details"]["custom_language"] = message.text.strip()
+    
+    # Now, proceed to ask for download links
+    convo["state"] = "ask_links" # a neutral state before link decision
+    buttons = [[InlineKeyboardButton("✅ Yes, add links", callback_data=f"addlink_yes_{user_id}")], [InlineKeyboardButton("❌ No, skip and generate", callback_data=f"addlink_no_{user_id}")]]
+    await message.reply_text(
+        f"✅ Language set to: **{convo['details']['custom_language']}**\n\n"
+        "**🔗 Add Download Links?**",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+# <<< MODIFIED: Manual conversation handler (removed language step from here) >>>
 async def manual_conversation_handler(client, message: Message):
     user_id = message.from_user.id
     convo = user_conversations.get(user_id)
@@ -462,19 +447,13 @@ async def manual_conversation_handler(client, message: Message):
         try:
             rating = "N/A" if text.upper() == "N/A" else round(float(text), 1)
             convo["details"]["vote_average"] = rating
-            # <<< NEW: Ask for language after rating >>>
-            convo["state"] = "manual_wait_language"
-            await message.reply_text("✅ **Rating set.**\n\nNow, send the **Language** of the content (e.g., `English`, `Hindi`).")
+            convo["state"] = "manual_wait_poster"
+            await message.reply_text("✅ **Rating set.**\n\nFinally, please send the **Poster Image** for this content.")
         except ValueError:
             await message.reply_text("⚠️ Invalid rating. Please send a number (e.g., `7.8`) or `N/A`.")
-    
-    # <<< NEW: State to handle language input >>>
-    elif state == "manual_wait_language":
-        convo["details"]["language"] = text
-        convo["state"] = "manual_wait_poster"
-        await message.reply_text("✅ **Language set.**\n\nFinally, please send the **Poster Image** for this content.")
 
 
+# ... (generate_final_content and final_action_callback remain the same) ...
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     convo = user_conversations.get(user_id)
     if not convo: return
@@ -549,6 +528,6 @@ async def final_action_callback(client, cb):
 
 # ---- START THE BOT ----
 if __name__ == "__main__":
-    print("🚀 Bot is starting... Manual Entry & Style Feature Added.")
+    print("🚀 Bot is starting... Interactive Language & Style Features Added.")
     bot.run()
     print("👋 Bot has stopped.")
