@@ -110,6 +110,7 @@ def generate_formatted_caption(data: dict):
                      f"**Plot:** _{overview[:500]}{'...' if len(overview) > 500 else ''}_")
     return caption_text
 
+# ---- MODIFIED HTML GENERATION FUNCTION to match CineZoneBDHD Style ----
 def generate_html(data: dict, links: list):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
@@ -117,35 +118,134 @@ def generate_html(data: dict, links: list):
     overview = data.get("overview", "No overview available.")
     genres = ", ".join([g["name"] for g in data.get("genres", [])] or ["N/A"])
     language = data.get('custom_language', '').title()
+
     if data.get('poster_path'):
         poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
+    elif data.get("manual_poster"):
+        poster_url = "https://1.bp.blogspot.com/-J24z_2H9OE4/YSnJfjvo35I/AAAAAAAAA1g/d-8-kS4yrr8V-2p2-2v5AnOUC_At-8XYgCNcBGAsYHQ/s16000/placeholder.png" # Placeholder if manual poster not uploaded
     else:
-        poster_url = "https://via.placeholder.com/400x600.png?text=Upload+Generated+Image"
+        poster_url = "https://1.bp.blogspot.com/-J24z_2H9OE4/YSnJfjvo35I/AAAAAAAAA1g/d-8-kS4yrr8V-2p2-2v5AnOUC_At-8XYgCNcBGAsYHQ/s16000/placeholder.png"
+    
     backdrop_url = f"https://image.tmdb.org/t/p/original{data['backdrop_path']}" if data.get('backdrop_path') else ""
-    css_styles = """<style>.smart-poster-container{position:relative;display:block;max-width:350px;margin:0 auto;overflow:hidden;border-radius:8px}.smart-poster-container .language-ribbon{position:absolute;top:15px;left:-40px;transform:rotate(-45deg);background-color:#e44d26;color:#fff;padding:5px 40px;font-size:14px;font-weight:700;text-align:center;text-shadow:1px 1px 2px rgba(0,0,0,.5);box-shadow:2px 2px 5px rgba(0,0,0,.3);z-index:10;white-space:nowrap}.smart-poster-container .language-ribbon.bengali{background-color:#008000}.smart-poster-container .language-ribbon.hindi{background-color:#ff9933}.smart-poster-container .language-ribbon.dual-audio{background-color:#4b0082}.smart-poster-container .language-ribbon.english{background-color:#0057b7}.smart-poster-container img{display:block;width:100%;height:auto;border-radius:8px;border:2px solid #ddd}.movie-post-container h2,.movie-post-container h3{font-family:inherit;color:inherit}.movie-post-container p{font-family:inherit;font-size:inherit;color:inherit;line-height:1.6}.download-section ul{list-style:none;padding:0;text-align:center}.download-section li{margin:10px 0}.download-button{font-family:inherit;font-size:1em;color:inherit;background-color:transparent;display:inline-block;padding:12px 25px;text-decoration:none;border:2px solid;border-radius:8px;transition:transform .2s;animation:rgb-glow 4s linear infinite}.download-button:hover{transform:scale(1.05)}@keyframes rgb-glow{0%{border-color:red;box-shadow:0 0 10px red}15%{border-color:orange;box-shadow:0 0 10px orange}30%{border-color:yellow;box-shadow:0 0 10px yellow}45%{border-color:lime;box-shadow:0 0 10px lime}60%{border-color:cyan;box-shadow:0 0 10px cyan}75%{border-color:blue;box-shadow:0 0 10px blue}90%{border-color:magenta;box-shadow:0 0 10px magenta}100%{border-color:red;box-shadow:0 0 10px red}}</style>"""
-    poster_html = ""
-    if language:
-        lang_class = ""
-        if "bengali" in language.lower(): lang_class = "bengali"
-        elif "hindi" in language.lower(): lang_class = "hindi"
-        elif "dual" in language.lower(): lang_class = "dual-audio"
-        elif "english" in language.lower(): lang_class = "english"
-        poster_html = f'<div class="smart-poster-container"><span class="language-ribbon {lang_class}">{language}</span><img src="{poster_url}" alt="{title} Poster"></div>'
-    else:
-        poster_html = f'<div style="text-align: center;"><img src="{poster_url}" alt="{title} Poster" style="max-width: 350px; height: auto; border-radius: 8px; border: 2px solid #ddd;"></div>'
-    movie_info_html = f'<div class="movie-info-section"><h3>Movie Information</h3><p><strong>Full Name:</strong> {title}</p><p><strong>Release Year:</strong> {year}</p><p><strong>Genres:</strong> {genres}</p><p><strong>Rating:</strong> ⭐ {rating}/10</p>'
+
+    # CSS styles inspired by the target website
+    css_styles = """
+<style>
+.movie-post-container {
+    font-family: 'Arial', sans-serif;
+    color: #333; /* Default text color for light themes, Blogger will adapt */
+    line-height: 1.6;
+}
+.movie-post-container h2, .movie-post-container h3 {
+    font-family: inherit;
+    color: inherit;
+}
+.movie-post-container h2 {
+    text-align: center;
+    font-size: 1.8em;
+    margin-bottom: 20px;
+    font-weight: bold;
+}
+.movie-post-container h3 {
+    background-color: #2c3e50; /* Dark blue-grey background */
+    color: #ffffff; /* White text */
+    padding: 10px 15px;
+    margin-top: 25px;
+    margin-bottom: 15px;
+    border-left: 5px solid #e74c3c; /* Red-orange accent border */
+    text-transform: uppercase;
+    font-size: 1.2em;
+    border-radius: 4px;
+}
+.movie-post-container p {
+    margin: 8px 0;
+    font-size: 1em;
+}
+.poster-div, .screenshots-div {
+    text-align: center;
+    margin-bottom: 20px;
+}
+.poster-div img, .screenshots-div img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    border: 3px solid #34495e; /* Dark border matching the heading */
+}
+.poster-div img {
+    max-width: 350px; /* Limit poster width */
+}
+.info-section p strong {
+    min-width: 120px;
+    display: inline-block;
+}
+.download-section ul {
+    list-style: none;
+    padding: 0;
+    text-align: center;
+}
+.download-section li {
+    margin: 10px 0;
+}
+.download-button {
+    display: inline-block;
+    background-color: #3498db; /* A nice blue color */
+    color: #ffffff !important; /* Important to override theme link color */
+    padding: 12px 25px;
+    text-decoration: none;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 1em;
+    border: none;
+    transition: background-color 0.3s ease, transform 0.2s;
+}
+.download-button:hover {
+    background-color: #2980b9; /* Darker blue on hover */
+    transform: scale(1.05);
+    color: #ffffff !important;
+}
+</style>
+"""
+    # HTML Structure
+    post_title_html = f'<h2>{title} ({year}) {language}</h2>'
+    poster_html = f'<div class="poster-div"><img src="{poster_url}" alt="{title} Poster"></div>'
+    
+    movie_info_html = (
+        f'<h3>Movie Information</h3>'
+        f'<div class="info-section">'
+        f'<p><strong>Full Name:</strong> {title}</p>'
+        f'<p><strong>Release Year:</strong> {year}</p>'
+        f'<p><strong>Genres:</strong> {genres}</p>'
+        f'<p><strong>Rating:</strong> ⭐ {rating}/10</p>'
+    )
     if language:
         movie_info_html += f'<p><strong>Language:</strong> {language}</p>'
-    movie_info_html += "</div>"
-    storyline_html = f'<div class="storyline-section"><h3>Storyline</h3><p>{overview}</p></div>'
+    movie_info_html += '</div>'
+    
+    storyline_html = f'<h3>Storyline</h3><p>{overview}</p>'
+
     screenshots_html = ""
     if backdrop_url:
-        screenshots_html = f'<div class="screenshots-section"><h3>Screenshots</h3><p style="text-align: center;"><a href="{backdrop_url}" target="_blank" rel="noopener noreferrer"><img src="{backdrop_url}" alt="{title} Screenshot" style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;"></a></p></div>'
+        screenshots_html = f'<h3>Screenshots</h3><div class="screenshots-div"><a href="{backdrop_url}" target="_blank" rel="noopener noreferrer"><img src="{backdrop_url}" alt="{title} Screenshot"></a></div>'
+
     download_buttons_html = ""
     if links:
-        link_items = "".join([f'<li><a href=\'{link["url"]}\' target="_blank" rel="noopener noreferrer" class="download-button">🔽 {link["label"]}</a></li>' for link in links])
-        download_buttons_html = f'<div class="download-section"><h3>Download Links</h3><ul>{link_items}</ul></div>'
-    final_html = f'{css_styles}<!-- Bot Generated Content Starts --><div class="movie-post-container" style="text-align: left;"><h2 style="text-align: center;">{title} ({year})</h2>{poster_html}{movie_info_html}{storyline_html}{screenshots_html}{download_buttons_html}</div><!-- Bot Generated Content Ends -->'
+        link_items = "".join([f'<li><a href="{link["url"]}" target="_blank" rel="noopener noreferrer" class="download-button">🔽 {link["label"]}</a></li>' for link in links])
+        download_buttons_html = f'<h3>Download Links</h3><div class="download-section"><ul>{link_items}</ul></div>'
+
+    # Final combined HTML
+    final_html = (
+        f'{css_styles}'
+        f'<!-- Bot Generated Content Starts -->'
+        f'<div class="movie-post-container">'
+        f'{post_title_html}'
+        f'{poster_html}'
+        f'{movie_info_html}'
+        f'{storyline_html}'
+        f'{screenshots_html}'
+        f'{download_buttons_html}'
+        f'</div>'
+        f'<!-- Bot Generated Content Ends -->'
+    )
     return final_html
 
 def generate_image(data: dict):
