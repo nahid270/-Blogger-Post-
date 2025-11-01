@@ -46,8 +46,6 @@ def home():
     return "✅ Final Movie/Series Bot is up and running!"
 
 def run_flask():
-    # Use a production-ready WSGI server like waitress if deploying seriously
-    # For now, Flask's development server is fine.
     app.run(host='0.0.0.0', port=8080)
 
 # ---- PYROGRAM BOT INITIALIZATION ----
@@ -73,7 +71,6 @@ except IOError:
 # ---- TMDB API FUNCTIONS ----
 def search_tmdb(query: str):
     year = None
-    # Improved regex to handle cases like "Movie (2023)" or "Movie 2023"
     match = re.search(r'(.+?)\s*\(?(\d{4})\)?$', query)
     if match:
         name = match.group(1).strip()
@@ -84,11 +81,10 @@ def search_tmdb(query: str):
         search_url = f"https://api.themoviedb.org/3/search/multi?api_key={TMDB_API_KEY}&query={name}"
         if year:
             search_url += f"&year={year}"
-        response = requests.get(search_url, timeout=10) # Added timeout
+        response = requests.get(search_url, timeout=10)
         response.raise_for_status()
-        # Filter out persons from search results
         results = [r for r in response.json().get("results", []) if r.get("media_type") in ["movie", "tv"]]
-        return results[:5] # Limit to 5 results
+        return results[:5]
     except requests.exceptions.RequestException as e:
         print(f"Error searching TMDB: {e}")
         return []
@@ -96,7 +92,7 @@ def search_tmdb(query: str):
 def get_tmdb_details(media_type: str, media_id: int):
     try:
         details_url = f"https://api.themoviedb.org/3/{media_type}/{media_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos"
-        response = requests.get(details_url, timeout=10) # Added timeout
+        response = requests.get(details_url, timeout=10)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
@@ -110,7 +106,6 @@ def generate_formatted_caption(data: dict):
     rating = f"⭐ {data.get('vote_average', 0):.1f}/10"
     genres = ", ".join([g["name"] for g in data.get("genres", [])] or ["N/A"])
     overview = data.get("overview", "No plot summary available.")
-    # More reliable director fetching
     director = next((member["name"] for member in data.get("credits", {}).get("crew", []) if member.get("job") == "Director"), "N/A")
     cast = ", ".join([actor["name"] for actor in data.get("credits", {}).get("cast", [])[:5]] or ["N/A"])
     language = data.get('custom_language', '').title()
@@ -139,7 +134,6 @@ def generate_html(data: dict, links: list):
     if data.get('poster_path'):
         poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
     else:
-        # A standard, reliable placeholder image URL
         poster_url = "https://www.prokerala.com/movies/assets/img/no-poster-available.jpg"
     
     backdrop_url = f"https://image.tmdb.org/t/p/original{data['backdrop_path']}" if data.get('backdrop_path') else ""
@@ -209,7 +203,7 @@ def generate_image(data: dict):
 
         poster_img = Image.open(io.BytesIO(poster_bytes)).convert("RGBA").resize((400, 600))
         
-        bg_img = Image.new('RGBA', (1280, 720), (10, 10, 20)) # Default dark background
+        bg_img = Image.new('RGBA', (1280, 720), (10, 10, 20))
         if data.get('backdrop_path'):
             try:
                 backdrop_url = f"https://image.tmdb.org/t/p/w1280{data['backdrop_path']}"
@@ -217,7 +211,7 @@ def generate_image(data: dict):
                 if backdrop_response.ok:
                     bg_img = Image.open(io.BytesIO(backdrop_response.content)).convert("RGBA").resize((1280, 720))
                     bg_img = bg_img.filter(ImageFilter.GaussianBlur(4))
-                    darken_layer = Image.new('RGBA', bg_img.size, (0, 0, 0, 150)) # Slightly darker overlay
+                    darken_layer = Image.new('RGBA', bg_img.size, (0, 0, 0, 150))
                     bg_img = Image.alpha_composite(bg_img, darken_layer)
             except Exception as e:
                 print(f"Could not process backdrop image: {e}")
@@ -225,7 +219,7 @@ def generate_image(data: dict):
         lang_text = data.get('custom_language', '').title()
         if lang_text:
             try:
-                ribbon = Image.new('RGBA', (poster_img.width, 40), (220, 20, 60, 200)) # Red ribbon
+                ribbon = Image.new('RGBA', (poster_img.width, 40), (220, 20, 60, 200))
                 draw_ribbon = ImageDraw.Draw(ribbon)
                 text_bbox = draw_ribbon.textbbox((0, 0), lang_text, font=FONT_BADGE)
                 text_x = (poster_img.width - (text_bbox[2] - text_bbox[0])) / 2
@@ -246,7 +240,7 @@ def generate_image(data: dict):
         
         overview, y_text, max_chars_per_line = data.get("overview", ""), 250, 80
         lines = [overview[i:i+max_chars_per_line] for i in range(0, len(overview), max_chars_per_line)]
-        for line in lines[:7]: # Limit to 7 lines
+        for line in lines[:7]:
             draw.text((480, y_text), line, font=FONT_REGULAR, fill="#E0E0E0")
             y_text += 30
         
@@ -262,7 +256,7 @@ def generate_image(data: dict):
 # ---- BOT HANDLERS ----
 @bot.on_message(filters.command("start") & filters.private)
 async def start_command(_, message: Message):
-    user_conversations.pop(message.from_user.id, None) # Clear any previous state
+    user_conversations.pop(message.from_user.id, None)
     await message.reply_text(
         "👋 **Welcome to the Movie & Series Bot!**\n\n"
         "Send me a movie or series name (e.g., `Inception 2010`) to get started.\n\n"
@@ -298,7 +292,6 @@ async def process_text_input(client, message: Message):
     user_id = message.from_user.id
     text = message.text.strip()
     
-    # Check if user is in a conversation
     if convo := user_conversations.get(user_id):
         state = convo.get("state")
         if state and state != "done":
@@ -313,7 +306,6 @@ async def process_text_input(client, message: Message):
                 await handler(client, message)
                 return
 
-    # If not in a conversation, perform a search
     processing_msg = await message.reply_text("🔍 Searching...")
     results = search_tmdb(text)
     if not results:
@@ -328,9 +320,11 @@ async def process_text_input(client, message: Message):
     
     await processing_msg.edit_text("**👇 Choose the correct one:**", reply_markup=InlineKeyboardMarkup(buttons))
 
-@bot.on_message(filters.text & filters.private & ~filters.command())
+# ############### THIS IS THE CORRECTED LINE ###############
+@bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual"]))
 async def text_handler(client, message: Message):
     await process_text_input(client, message)
+# ##########################################################
 
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
@@ -505,12 +499,10 @@ async def final_action_callback(client, cb):
 # ---- MAIN EXECUTION ----
 if __name__ == "__main__":
     print("🚀 Starting the bot...")
-    # Start the Flask app in a separate thread to keep the bot alive
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     
-    # Run the Pyrogram client
     bot.run()
     
     print("👋 Bot has stopped.")
