@@ -110,7 +110,10 @@ def search_tmdb(query: str):
         response = requests.get(search_url, timeout=10)
         response.raise_for_status()
         results = [r for r in response.json().get("results", []) if r.get("media_type") in ["movie", "tv"]]
-        return results[:5]
+        # ==============================================================================
+        # ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে (সার্চ লিমিট) ]======
+        # ==============================================================================
+        return results[:15] # Increased search limit to 15
     except requests.exceptions.RequestException as e:
         print(f"Error searching TMDB: {e}")
         return []
@@ -124,6 +127,23 @@ def get_tmdb_details(media_type: str, media_id: int):
     except requests.exceptions.RequestException as e:
         print(f"Error fetching TMDB details: {e}")
         return None
+
+# ---- New function to upload image ----
+def upload_to_telegraph(image_bytes_io: io.BytesIO):
+    """Uploads an image from bytes to telegra.ph and returns the URL."""
+    try:
+        image_bytes_io.seek(0)
+        files = {'file': ('image.png', image_bytes_io, 'image/png')}
+        response = requests.post('https://telegra.ph/upload', files=files, timeout=20)
+        response.raise_for_status()
+        result = response.json()
+        if isinstance(result, list) and result and 'src' in result[0]:
+            image_url = "https://telegra.ph" + result[0]['src']
+            print(f"✅ Image uploaded to: {image_url}")
+            return image_url
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Error uploading image to telegra.ph: {e}")
+    return None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
@@ -150,7 +170,7 @@ def generate_formatted_caption(data: dict):
     return caption_text
 
 # ==============================================================================
-# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে ]======
+# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে (পোস্টার লজিক) ]======
 # ==============================================================================
 def generate_html(data: dict, links: list):
     TIMER_SECONDS = 10
@@ -160,7 +180,14 @@ def generate_html(data: dict, links: list):
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
-    poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get('poster_path') else "https://via.placeholder.com/400x600.png?text=No+Poster"
+    
+    # --- পোস্টার URL নির্ধারণের জন্য উন্নত লজিক ---
+    poster_url = data.get('manual_poster_url')  # প্রথমে ম্যানুয়াল পোস্টার লিংক খোঁজা হবে
+    if not poster_url:
+        if data.get('poster_path'):
+            poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
+        else:
+            poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster" # ফলব্যাক ইমেজ
 
     # --- ডাইনামিকভাবে ডাউনলোড বাটন তৈরি করার অংশ ---
     download_blocks_html = ""
@@ -508,18 +535,36 @@ async def manual_conversation_handler(client, message: Message):
 
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
+    
     await msg_to_edit.edit_text("⏳ Generating content...")
+
+    # ==============================================================================
+    # ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে (পোস্টার আপলোড) ]======
+    # ==============================================================================
+    if manual_poster_bytes := convo["details"].get("manual_poster"):
+        await msg_to_edit.edit_text("🖼️ Uploading manual poster...")
+        poster_url = upload_to_telegraph(manual_poster_bytes)
+        if poster_url:
+            convo["details"]["manual_poster_url"] = poster_url
+        else:
+            await msg_to_edit.edit_text("⚠️ Failed to upload manual poster. Using a placeholder.")
+
     caption = generate_formatted_caption(convo["details"])
     html_code = generate_html(convo["details"], convo["links"])
+    
     await msg_to_edit.edit_text("🎨 Generating image...")
     image_file = generate_image(convo["details"])
+    
     convo["generated"] = {"caption": caption, "html": html_code, "image": image_file}
     convo["state"] = "done"
+    
     buttons = [[InlineKeyboardButton("📝 Get Blogger HTML", callback_data=f"get_html_{user_id}")],
                [InlineKeyboardButton("📄 Copy Caption", callback_data=f"get_caption_{user_id}")]]
     if user_id in user_channels:
         buttons.append([InlineKeyboardButton("📢 Post to Channel", callback_data=f"post_channel_{user_id}")])
+    
     await msg_to_edit.delete()
+    
     if image_file:
         await client.send_photo(msg_to_edit.chat.id, photo=image_file, caption=caption, reply_markup=InlineKeyboardMarkup(buttons))
     else:
