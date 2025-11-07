@@ -125,20 +125,36 @@ def get_tmdb_details(media_type: str, media_id: int):
         print(f"Error fetching TMDB details: {e}")
         return None
 
-### <-- নতুন ফাংশন (ব্লগারের জন্য ছবি হোস্ট করতে) -->
+### <-- সংশোধিত এবং উন্নত ফাংশন -->
 def upload_to_telegraph(file_obj):
     """Uploads an image from a file object to telegra.ph and returns the URL."""
     try:
-        files = {'file': ('photo.png', file_obj, 'image/png')}
-        response = requests.post('https://telegra.ph/upload', files=files, timeout=10)
-        response.raise_for_status()
+        # Use JPEG as it's the default for Telegram photos
+        files = {'file': ('photo.jpg', file_obj, 'image/jpeg')}
+        response = requests.post('https://telegra.ph/upload', files=files, timeout=15)
+        
+        # Check for non-200 status codes and log the response
+        if response.status_code != 200:
+            print(f"⚠️ Telegraph upload failed with status code: {response.status_code}")
+            print(f"⚠️ Response content: {response.text}")
+            return None
+
         result = response.json()
         if result and isinstance(result, list) and 'src' in result[0]:
             image_url = "https://telegra.ph" + result[0]['src']
             print(f"✅ Image uploaded to Telegraph: {image_url}")
             return image_url
+        else:
+            # Log unexpected JSON structure
+            print(f"⚠️ Telegraph returned unexpected JSON: {result}")
+            return None
+            
     except requests.exceptions.RequestException as e:
-        print(f"⚠️ Error uploading to Telegraph: {e}")
+        print(f"⚠️ Network error during Telegraph upload: {e}")
+    except Exception as e:
+        # Catch any other unexpected errors, like JSON decoding
+        print(f"⚠️ An unexpected error occurred in upload_to_telegraph: {e}")
+        
     return None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
@@ -174,18 +190,13 @@ def generate_html(data: dict, links: list):
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
     
-    ### <-- পরিবর্তন (পোস্টারের লিঙ্ক নির্ধারণ করার জন্য) -->
     if data.get('manual_poster_url'):
-        # যদি ম্যানুয়ালি আপলোড করা ছবির লিঙ্ক থাকে, সেটি ব্যবহার করুন
         poster_url = data['manual_poster_url']
     elif data.get('poster_path'):
-        # অন্যথায়, TMDb থেকে লিঙ্ক নিন
         poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
     else:
-        # কোনোটিই না থাকলে, একটি placeholder ব্যবহার করুন
         poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
-    # --- ডাইনামিকভাবে ডাউনলোড বাটন তৈরি করার অংশ ---
     download_blocks_html = ""
     if not links:
         download_blocks_html = "<p>No download links available.</p>"
@@ -434,7 +445,6 @@ async def process_text_input(client, message: Message):
 async def text_handler(client, message: Message):
     await process_text_input(client, message)
 
-### <-- পরিবর্তন (এই সম্পূর্ণ ফাংশনটি আপডেট করা হয়েছে) -->
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
     user_id = message.from_user.id
@@ -442,18 +452,15 @@ async def photo_handler(client, message: Message):
         processing_msg = await message.reply_text("🖼️ Receiving poster and uploading to host...")
         photo_file = await client.download_media(message.photo.file_id, in_memory=True)
         
-        # টেলিগ্রামে পাঠানোর জন্য ছবিটি মেমরিতে রাখছি
         convo["details"]["manual_poster"] = photo_file
         
-        # ব্লগারে দেখানোর জন্য ছবিটি telegra.ph-এ আপলোড করে লিঙ্ক নিচ্ছি
-        photo_file.seek(0) # ফাইল পয়েন্টার রিসেট করা হচ্ছে
+        photo_file.seek(0)
         poster_url = upload_to_telegraph(photo_file)
         
         if not poster_url:
             await processing_msg.edit_text("❌ Failed to upload poster to hosting service. Please try again.")
             return
             
-        # লিঙ্কটি সেভ করছি
         convo["details"]["manual_poster_url"] = poster_url 
 
         convo["state"] = "wait_custom_language"
