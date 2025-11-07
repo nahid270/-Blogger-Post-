@@ -155,7 +155,7 @@ def generate_formatted_caption(data: dict):
 def generate_html(data: dict, links: list):
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
-    TELEGRAM_LINK = "https://t.me/google"
+    TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
