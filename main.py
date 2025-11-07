@@ -149,6 +149,9 @@ def generate_formatted_caption(data: dict):
     caption_text += f"**Plot:** _{overview[:450]}{'...' if len(overview) > 450 else ''}_"
     return caption_text
 
+# ==============================================================================
+# ======[ THIS IS THE ONLY FUNCTION THAT HAS BEEN MODIFIED ]======
+# ==============================================================================
 def generate_html(data: dict, links: list):
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
@@ -165,7 +168,7 @@ def generate_html(data: dict, links: list):
 <!-- Bot Generated Content Starts -->
 <!-- Movie Info -->
 <div style="text-align: center;">
-    <img src="{poster_url}" alt="{title} Poster" style="max-width: 350px; border-radius: 8px; margin-bottom: 15px;">
+    <img src="{poster_url}" alt="{title} Poster" style="max-width: 280px; border-radius: 8px; margin-bottom: 15px;">
     <h2>{title} ({year}) - {language}</h2>
     <p style="text-align: left; padding: 0 10px;">{overview}</p>
 </div>
@@ -173,12 +176,11 @@ def generate_html(data: dict, links: list):
 <!-- Download System with Notification -->
 <div class="dl-body" style="font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center;">
     <style>
-        #dl-notice-overlay {{ position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: center; z-index: 9999; }}
-        #dl-notice-overlay.hide {{ display: none; }}
-        #dl-notice-box {{ background: rgba(40, 40, 40, 0.8); backdrop-filter: blur(10px); padding: 25px; border-radius: 15px; text-align: center; color: white; width: 90%; max-width: 400px; border: 1px solid rgba(255, 255, 255, 0.2); }}
-        #dl-notice-btn {{ display: block; margin-top: 20px; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; color: white; background: #007bff; transition: 0.3s; }}
-        .dl-main-content {{ display: none; width: 100%; max-width: 500px; margin: auto; }}
+        .dl-main-content {{ width: 100%; max-width: 500px; margin: auto; }}
         .dl-post-container {{ background: #ffffff; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); border: 1px solid #e7eaf3; }}
+        .dl-instruction-box {{ background-color: #fffbe6; border: 1px solid #ffe58f; color: #333; padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: center; }}
+        .dl-instruction-box h2 {{ margin: 0 0 10px; font-size: 18px; }}
+        .dl-instruction-box p {{ margin: 5px 0; font-size: 14px; line-height: 1.5; }}
         .dl-download-block {{ border: 1px solid #ddd; border-radius: 12px; padding: 15px; margin-bottom: 15px; }}
         .dl-download-button, .dl-real-download-link {{ display: block; width: 100%; padding: 15px; text-align: center; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.3s; box-sizing: border-box; }}
         .dl-download-button {{ background: #ff5722; color: white !important; border: none; }}
@@ -187,17 +189,20 @@ def generate_html(data: dict, links: list):
         .dl-timer-display {{ margin-top: 10px; font-size: 18px; font-weight: bold; color: #d32f2f; background: #f0f0f0; padding: 12px; border-radius: 10px; text-align: center; display: none; }}
         .dl-download-count-text {{ margin-top: 20px; font-size: 15px; color: #555; text-align: center; }}
     </style>
-    <div id="dl-notice-overlay">
-        <div id="dl-notice-box">
-            <h2>🎬 Download Notice</h2>
-            <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
-            <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
-            <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
-            <a href="#" id="dl-notice-btn">✅ বুঝতে পেরেছি</a>
-        </div>
-    </div>
+    
+    <!-- Main Download Box -->
     <div class="dl-main-content">
         <div class="dl-post-container">
+            
+            <!-- Download Instructions Box -->
+            <div class="dl-instruction-box">
+                <h2>🎬 ডাউনলোড করার নিয়মাবলী</h2>
+                <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
+                <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
+                <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
+            </div>
+
+            <!-- Download Blocks -->
             <div class="dl-download-block">
                 <button class="dl-download-button" data-quality="480p" data-click-count="0">⬇️ Download 480p</button>
                 <div class="dl-timer-display"></div>
@@ -222,10 +227,7 @@ def generate_html(data: dict, links: list):
         const AD_LINK = "{AD_LINK}";
         const TIMER_SECONDS = {TIMER_SECONDS};
         const downloadLinks = {{ '480p': "{link_480p}", '720p': "{link_720p}", '1080p': "{link_1080p}" }};
-        const noticeOverlay = document.getElementById('dl-notice-overlay');
-        const noticeBtn = document.getElementById('dl-notice-btn');
-        const mainContent = document.querySelector('.dl-main-content');
-        noticeBtn.onclick = (e) => {{ e.preventDefault(); noticeOverlay.classList.add('hide'); mainContent.style.display = 'block'; }};
+        
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
                 let clickCount = parseInt(button.dataset.clickCount);
@@ -521,9 +523,6 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
     else:
         await client.send_message(msg_to_edit.chat.id, caption, reply_markup=InlineKeyboardMarkup(buttons))
 
-# ==============================================================================
-# ======[ FINAL & IMPROVED FUNCTION FOR ONE-CLICK COPY ]======
-# ==============================================================================
 @bot.on_callback_query(filters.regex("^(get_|post_)"))
 async def final_action_callback(client, cb):
     try:
@@ -542,15 +541,10 @@ async def final_action_callback(client, cb):
     if action == "get_html":
         await cb.answer("🔗 আপনার কোডের জন্য একটি লিংক তৈরি করা হচ্ছে...", show_alert=False)
         html_code = generated.get("html", "")
-
         try:
-            # Post the code to a pasting service to get a single link
             response = requests.post("https://dpaste.com/api/", data={"content": html_code, "syntax": "html"})
-            response.raise_for_status()  # Raise an exception for bad status codes
-            
+            response.raise_for_status()
             paste_url = response.text.strip()
-            
-            # Send the link to the user with a button
             await cb.message.reply_text(
                 "✅ **আপনার ব্লগার কোড প্রস্তুত!**\n\n"
                 "নিচের বাটনে ক্লিক করে ব্রাউজারে খুলুন এবং সম্পূর্ণ কোডটি একবারে কপি করে নিন।",
@@ -558,13 +552,11 @@ async def final_action_callback(client, cb):
                     [[InlineKeyboardButton("🔗 কোড কপি করতে এখানে ক্লিক করুন", url=paste_url)]]
                 )
             )
-
         except requests.exceptions.RequestException as e:
-            # Fallback: If the pasting service fails, send the code as a file
             print(f"Error creating paste link: {e}")
             await cb.message.reply_text(
                 "⚠️ **দুঃখিত!**\n"
-                "কোডটির জন্য অনলাইন লিংক তৈরি করা সম্ভব হয়নি। সম্ভবত ইন্টারনেট বা সার্ভারজনিত সমস্যা হয়েছে।\n\n"
+                "কোডটির জন্য অনলাইন লিংক তৈরি করা সম্ভব হয়নি।\n\n"
                 "**বিকল্প হিসেবে, সম্পূর্ণ কোডটি একটি ফাইল (`.html`) হিসেবে পাঠানো হলো।**",
             )
             title = (convo["details"].get("title") or "post").replace(" ", "_")
