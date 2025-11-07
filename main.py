@@ -123,33 +123,24 @@ def generate_formatted_caption(data: dict):
     caption_text += f"**Plot:** _{overview[:450]}{'...' if len(overview) > 450 else ''}_"
     return caption_text
 
-# ---- [MODIFIED] generate_html Function ----
-# This function is now updated to generate the advanced download system.
+# ---- [FULLY CORRECTED] generate_html Function with Notification System ----
 def generate_html(data: dict, links: list):
-    # --- Configuration ---
-    # আপনি এই মানগুলো এখানে পরিবর্তন করতে পারেন
-    AD_LINK = "https://www.effectivegatecpm.com/tcv8t3ez?key=963db7dfa28636112ea21bcca599d8fc"  # আপনার বিজ্ঞাপনের লিঙ্ক
+    AD_LINK = "https://www.effectivegatecpm.com/tcv8t3ez?key=963db7dfa28636112ea21bcca599d8fc"
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
-    TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"  # আপনার টেলিগ্রাম চ্যানেলের লিঙ্ক
+    TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"
 
-    # --- Extract basic movie info ---
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
-    if data.get('poster_path'):
-        poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
-    else:
-        poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
+    poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get('poster_path') else "https://via.placeholder.com/400x600.png?text=No+Poster"
 
-    # --- Process download links based on user-provided labels ---
-    # This smartly finds the right URL even if the label is "Download 480p" or "480p Link"
     link_480p = next((link['url'] for link in links if '480' in link['label']), "#")
     link_720p = next((link['url'] for link in links if '720' in link['label']), "#")
     link_1080p = next((link['url'] for link in links if '1080' in link['label']), "#")
 
-    # --- The new HTML template with integrated JS download system ---
+    # Note: Double braces {{ and }} are used to escape braces in f-strings for CSS and JS
     final_html = f"""
 <!-- Bot Generated Content Starts -->
 <!-- Movie Info -->
@@ -160,22 +151,36 @@ def generate_html(data: dict, links: list):
 </div>
 <!--more-->
 
-<!-- Download System HTML -->
+<!-- Download System with Notification -->
 <div class="dl-body" style="font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center;">
     <style>
-        .dl-main-content {{ width: 100%; max-width: 500px; margin: auto; }}
+        #dl-notice-overlay {{ position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: center; z-index: 9999; }}
+        #dl-notice-overlay.hide {{ display: none; }}
+        #dl-notice-box {{ background: rgba(40, 40, 40, 0.8); backdrop-filter: blur(10px); padding: 25px; border-radius: 15px; text-align: center; color: white; width: 90%; max-width: 400px; border: 1px solid rgba(255, 255, 255, 0.2); }}
+        #dl-notice-btn {{ display: block; margin-top: 20px; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; color: white; background: #007bff; transition: 0.3s; }}
+        .dl-main-content {{ display: none; width: 100%; max-width: 500px; margin: auto; }}
         .dl-post-container {{ background: #ffffff; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); border: 1px solid #e7eaf3; }}
         .dl-download-block {{ border: 1px solid #ddd; border-radius: 12px; padding: 15px; margin-bottom: 15px; }}
         .dl-download-button, .dl-real-download-link {{ display: block; width: 100%; padding: 15px; text-align: center; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.3s; box-sizing: border-box; }}
         .dl-download-button {{ background: #ff5722; color: white !important; border: none; }}
-        .dl-download-button:hover {{ background: #e64a19; transform: scale(1.02); }}
         .dl-real-download-link {{ background: #4caf50; color: white !important; display: none; }}
-        .dl-real-download-link:hover {{ background: #388e3c; transform: scale(1.02); }}
         .dl-telegram-link {{ display: block; width: 100%; padding: 15px; text-align: center; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.3s; box-sizing: border-box; background: #0088cc; color: white !important; margin-top: 20px; }}
-        .dl-telegram-link:hover {{ background: #006699; }}
         .dl-timer-display {{ margin-top: 10px; font-size: 18px; font-weight: bold; color: #d32f2f; background: #f0f0f0; padding: 12px; border-radius: 10px; text-align: center; display: none; }}
         .dl-download-count-text {{ margin-top: 20px; font-size: 15px; color: #555; text-align: center; }}
     </style>
+    
+    <!-- Notice Overlay HTML -->
+    <div id="dl-notice-overlay">
+        <div id="dl-notice-box">
+            <h2>🎬 Download Notice</h2>
+            <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
+            <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
+            <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
+            <a href="#" id="dl-notice-btn">✅ বুঝতে পেরেছি</a>
+        </div>
+    </div>
+    
+    <!-- Main Download Box -->
     <div class="dl-main-content">
         <div class="dl-post-container">
             <div class="dl-download-block">
@@ -194,18 +199,25 @@ def generate_html(data: dict, links: list):
                 <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get 1080p Link</a>
             </div>
             <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
-            <a id="telegram-link" class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank" rel="noopener noreferrer">💋 Join Telegram Channel</a>
+            <a class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank" rel="noopener noreferrer">💋 Join Telegram Channel</a>
         </div>
     </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {{
         const AD_LINK = "{AD_LINK}";
         const TIMER_SECONDS = {TIMER_SECONDS};
-        const downloadLinks = {{
-            '480p': "{link_480p}",
-            '720p': "{link_720p}",
-            '1080p': "{link_1080p}",
+        const downloadLinks = {{ '480p': "{link_480p}", '720p': "{link_720p}", '1080p': "{link_1080p}" }};
+        
+        const noticeOverlay = document.getElementById('dl-notice-overlay');
+        const noticeBtn = document.getElementById('dl-notice-btn');
+        const mainContent = document.querySelector('.dl-main-content');
+
+        noticeBtn.onclick = (e) => {{
+            e.preventDefault();
+            noticeOverlay.classList.add('hide');
+            mainContent.style.display = 'block';
         }};
+
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
                 let clickCount = parseInt(button.dataset.clickCount);
@@ -231,9 +243,7 @@ def generate_html(data: dict, links: list):
                             timerDisplay.style.display = 'none';
                             realDownloadLink.style.display = 'block';
                             const counter = document.getElementById('download-counter');
-                            if(counter) {{
-                                counter.innerText = parseInt(counter.innerText) + 1;
-                            }}
+                            if(counter) counter.innerText = parseInt(counter.innerText) + 1;
                         }}
                     }}, 1000);
                     button.dataset.clickCount = 2;
