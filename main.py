@@ -125,6 +125,22 @@ def get_tmdb_details(media_type: str, media_id: int):
         print(f"Error fetching TMDB details: {e}")
         return None
 
+### <-- নতুন ফাংশন (ব্লগারের জন্য ছবি হোস্ট করতে) -->
+def upload_to_telegraph(file_obj):
+    """Uploads an image from a file object to telegra.ph and returns the URL."""
+    try:
+        files = {'file': ('photo.png', file_obj, 'image/png')}
+        response = requests.post('https://telegra.ph/upload', files=files, timeout=10)
+        response.raise_for_status()
+        result = response.json()
+        if result and isinstance(result, list) and 'src' in result[0]:
+            image_url = "https://telegra.ph" + result[0]['src']
+            print(f"✅ Image uploaded to Telegraph: {image_url}")
+            return image_url
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Error uploading to Telegraph: {e}")
+    return None
+
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
     title = data.get("title") or data.get("name") or "N/A"
@@ -149,9 +165,6 @@ def generate_formatted_caption(data: dict):
     caption_text += f"**Plot:** _{overview[:450]}{'...' if len(overview) > 450 else ''}_"
     return caption_text
 
-# ==============================================================================
-# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে ]======
-# ==============================================================================
 def generate_html(data: dict, links: list):
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
@@ -160,7 +173,17 @@ def generate_html(data: dict, links: list):
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
-    poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get('poster_path') else "https://via.placeholder.com/400x600.png?text=No+Poster"
+    
+    ### <-- পরিবর্তন (পোস্টারের লিঙ্ক নির্ধারণ করার জন্য) -->
+    if data.get('manual_poster_url'):
+        # যদি ম্যানুয়ালি আপলোড করা ছবির লিঙ্ক থাকে, সেটি ব্যবহার করুন
+        poster_url = data['manual_poster_url']
+    elif data.get('poster_path'):
+        # অন্যথায়, TMDb থেকে লিঙ্ক নিন
+        poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
+    else:
+        # কোনোটিই না থাকলে, একটি placeholder ব্যবহার করুন
+        poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
     # --- ডাইনামিকভাবে ডাউনলোড বাটন তৈরি করার অংশ ---
     download_blocks_html = ""
@@ -168,7 +191,6 @@ def generate_html(data: dict, links: list):
         download_blocks_html = "<p>No download links available.</p>"
     else:
         for link in links:
-            # এখানে প্রতিটি লিঙ্কের জন্য আলাদা ডাউনলোড ব্লক তৈরি করা হচ্ছে
             download_blocks_html += f"""
             <div class="dl-download-block">
                 <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
@@ -233,7 +255,7 @@ def generate_html(data: dict, links: list):
                 const block = button.parentElement;
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
-                const downloadUrl = button.dataset.url; // <-- লিঙ্কটি এখান থেকে নেওয়া হচ্ছে
+                const downloadUrl = button.dataset.url;
 
                 if (clickCount === 0) {{
                     window.open(AD_LINK, "_blank");
@@ -243,7 +265,7 @@ def generate_html(data: dict, links: list):
                     button.style.display = 'none';
                     timerDisplay.style.display = 'block';
                     
-                    realDownloadLink.href = downloadUrl; // <-- আসল লিঙ্ক সেট করা হচ্ছে
+                    realDownloadLink.href = downloadUrl;
                     
                     let timeLeft = TIMER_SECONDS;
                     timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
@@ -412,15 +434,30 @@ async def process_text_input(client, message: Message):
 async def text_handler(client, message: Message):
     await process_text_input(client, message)
 
+### <-- পরিবর্তন (এই সম্পূর্ণ ফাংশনটি আপডেট করা হয়েছে) -->
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
     user_id = message.from_user.id
     if (convo := user_conversations.get(user_id)) and convo.get("state") == "manual_wait_poster":
-        processing_msg = await message.reply_text("🖼️ Receiving poster...")
+        processing_msg = await message.reply_text("🖼️ Receiving poster and uploading to host...")
         photo_file = await client.download_media(message.photo.file_id, in_memory=True)
+        
+        # টেলিগ্রামে পাঠানোর জন্য ছবিটি মেমরিতে রাখছি
         convo["details"]["manual_poster"] = photo_file
+        
+        # ব্লগারে দেখানোর জন্য ছবিটি telegra.ph-এ আপলোড করে লিঙ্ক নিচ্ছি
+        photo_file.seek(0) # ফাইল পয়েন্টার রিসেট করা হচ্ছে
+        poster_url = upload_to_telegraph(photo_file)
+        
+        if not poster_url:
+            await processing_msg.edit_text("❌ Failed to upload poster to hosting service. Please try again.")
+            return
+            
+        # লিঙ্কটি সেভ করছি
+        convo["details"]["manual_poster_url"] = poster_url 
+
         convo["state"] = "wait_custom_language"
-        await processing_msg.edit_text("✅ Poster received!\n\n**🗣️ Now, enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`).")
+        await processing_msg.edit_text(f"✅ Poster received and hosted!\n\n**🗣️ Now, enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`).")
 
 @bot.on_callback_query(filters.regex("^select_"))
 async def selection_callback(client, cb):
@@ -591,15 +628,12 @@ async def final_action_callback(client, cb):
 if __name__ == "__main__":
     print("🚀 Starting the bot...")
     
-    # Load the saved ad link on startup
     load_ad_link()
     
-    # Start the Flask app in a separate thread
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     
-    # Start the Pyrogram bot client
     bot.run()
     
     print("👋 Bot has stopped.")
