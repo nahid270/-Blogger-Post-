@@ -125,36 +125,27 @@ def get_tmdb_details(media_type: str, media_id: int):
         print(f"Error fetching TMDB details: {e}")
         return None
 
-### <-- সংশোধিত এবং উন্নত ফাংশন -->
 def upload_to_telegraph(file_obj):
     """Uploads an image from a file object to telegra.ph and returns the URL."""
     try:
-        # Use JPEG as it's the default for Telegram photos
         files = {'file': ('photo.jpg', file_obj, 'image/jpeg')}
         response = requests.post('https://telegra.ph/upload', files=files, timeout=15)
-        
-        # Check for non-200 status codes and log the response
         if response.status_code != 200:
             print(f"⚠️ Telegraph upload failed with status code: {response.status_code}")
             print(f"⚠️ Response content: {response.text}")
             return None
-
         result = response.json()
         if result and isinstance(result, list) and 'src' in result[0]:
             image_url = "https://telegra.ph" + result[0]['src']
             print(f"✅ Image uploaded to Telegraph: {image_url}")
             return image_url
         else:
-            # Log unexpected JSON structure
             print(f"⚠️ Telegraph returned unexpected JSON: {result}")
             return None
-            
     except requests.exceptions.RequestException as e:
         print(f"⚠️ Network error during Telegraph upload: {e}")
     except Exception as e:
-        # Catch any other unexpected errors, like JSON decoding
         print(f"⚠️ An unexpected error occurred in upload_to_telegraph: {e}")
-        
     return None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
@@ -190,6 +181,7 @@ def generate_html(data: dict, links: list):
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
     
+    # <-- এখানে কোনো পরিবর্তনের প্রয়োজন নেই, এটি ஏற்கனவே URL সমর্থন করে -->
     if data.get('manual_poster_url'):
         poster_url = data['manual_poster_url']
     elif data.get('poster_path'):
@@ -302,17 +294,29 @@ def generate_html(data: dict, links: list):
 """
     return final_html
 
+### <-- এখানে পরিবর্তন করা হয়েছে -->
 def generate_image(data: dict):
+    """Generates the final image with movie/series details."""
     try:
         poster_bytes = None
-        if data.get("manual_poster"):
-            poster_bytes = data["manual_poster"].getvalue()
+        # Step 1: ম্যানুয়ালি দেওয়া URL থেকে ছবি আনার চেষ্টা করবে
+        if data.get("manual_poster_url"):
+            try:
+                poster_response = requests.get(data["manual_poster_url"], timeout=15)
+                if poster_response.ok:
+                    poster_bytes = poster_response.content
+            except requests.exceptions.RequestException as e:
+                print(f"⚠️ Could not download manual poster from URL: {e}")
+        # Step 2: যদি URL না থাকে, তাহলে TMDB থেকে আনার চেষ্টা করবে
         elif data.get('poster_path'):
             poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
             poster_response = requests.get(poster_url)
             if poster_response.ok:
                 poster_bytes = poster_response.content
-        if not poster_bytes: return None
+        
+        if not poster_bytes: 
+            return None
+
         poster_img = Image.open(io.BytesIO(poster_bytes)).convert("RGBA").resize((400, 600))
         bg_img = Image.new('RGBA', (1280, 720), (10, 10, 20))
         if data.get('backdrop_path'):
@@ -422,7 +426,7 @@ async def process_text_input(client, message: Message):
             handlers = {
                 "manual_wait_title": manual_conversation_handler, "manual_wait_year": manual_conversation_handler,
                 "manual_wait_overview": manual_conversation_handler, "manual_wait_genres": manual_conversation_handler,
-                "manual_wait_rating": manual_conversation_handler,
+                "manual_wait_rating": manual_conversation_handler, "manual_wait_poster_url": manual_conversation_handler,
                 "wait_custom_language": language_conversation_handler,
                 "wait_link_label": link_conversation_handler, "wait_link_url": link_conversation_handler
             }
@@ -445,26 +449,14 @@ async def process_text_input(client, message: Message):
 async def text_handler(client, message: Message):
     await process_text_input(client, message)
 
+# <-- এই ফাংশনটি এখন আর ম্যানুয়াল পোস্টের জন্য ব্যবহৃত হবে না, তাই এটি মুছে ফেলা হয়েছে বা এর কার্যকারিতা সীমিত করা হয়েছে -->
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
     user_id = message.from_user.id
-    if (convo := user_conversations.get(user_id)) and convo.get("state") == "manual_wait_poster":
-        processing_msg = await message.reply_text("🖼️ Receiving poster and uploading to host...")
-        photo_file = await client.download_media(message.photo.file_id, in_memory=True)
-        
-        convo["details"]["manual_poster"] = photo_file
-        
-        photo_file.seek(0)
-        poster_url = upload_to_telegraph(photo_file)
-        
-        if not poster_url:
-            await processing_msg.edit_text("❌ Failed to upload poster to hosting service. Please try again.")
-            return
-            
-        convo["details"]["manual_poster_url"] = poster_url 
-
-        convo["state"] = "wait_custom_language"
-        await processing_msg.edit_text(f"✅ Poster received and hosted!\n\n**🗣️ Now, enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`).")
+    if (convo := user_conversations.get(user_id)):
+        # যদি ভবিষ্যতে অন্য কোনো কারণে ছবি আপলোডের প্রয়োজন হয়, তার জন্য এই হ্যান্ডলার রাখা যেতে পারে।
+        # কিন্তু ম্যানুয়াল ফ্লো এখন আর ছবি সরাসরি গ্রহণ করবে না।
+        await message.reply_text("⚠️ Currently, I can only accept poster URLs during manual entry. Please use the `/manual` command and provide a URL when prompted.")
 
 @bot.on_callback_query(filters.regex("^select_"))
 async def selection_callback(client, cb):
@@ -517,7 +509,9 @@ async def language_conversation_handler(client, message: Message):
                [InlineKeyboardButton("❌ No, skip", callback_data=f"addlink_no_{user_id}")]]
     await message.reply_text(f"✅ Language set to **{convo['details']['custom_language']}**.\n\n**🔗 Add Download Links?**", reply_markup=InlineKeyboardMarkup(buttons))
 
+### <-- এখানে পরিবর্তন করা হয়েছে -->
 async def manual_conversation_handler(client, message: Message):
+    """Handles the conversation flow for manual content entry."""
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     text = message.text.strip()
@@ -545,10 +539,20 @@ async def manual_conversation_handler(client, message: Message):
         try:
             rating = 0.0 if text.upper() == "N/A" else round(float(text), 1)
             convo["details"]["vote_average"] = rating
-            convo["state"] = "manual_wait_poster"
-            await message.reply_text("✅ Rating set. Finally, send the **Poster Image**.")
+            # পরের ধাপে পোস্টার URL চাওয়া হবে
+            convo["state"] = "manual_wait_poster_url"
+            await message.reply_text("✅ Rating set. Finally, send the **Poster Image URL**.")
         except ValueError:
             await message.reply_text("⚠️ Invalid rating. Send a number (e.g., `7.8`) or `N/A`.")
+    # নতুন ধাপ: পোস্টার URL গ্রহণ করা
+    elif state == "manual_wait_poster_url":
+        if text.startswith("http://") or text.startswith("https://"):
+            convo["details"]["manual_poster_url"] = text
+            convo["state"] = "wait_custom_language"
+            await message.reply_text(f"✅ Poster URL set!\n\n**🗣️ Now, enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`).")
+        else:
+            await message.reply_text("⚠️ Invalid URL. Please send a valid link starting with `http://` or `https://`.")
+
 
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
@@ -567,7 +571,8 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
     if image_file:
         await client.send_photo(msg_to_edit.chat.id, photo=image_file, caption=caption, reply_markup=InlineKeyboardMarkup(buttons))
     else:
-        await client.send_message(msg_to_edit.chat.id, caption, reply_markup=InlineKeyboardMarkup(buttons))
+        # যদি ছবি তৈরি না হয় (যেমন ভুল URL এর কারণে), শুধু ক্যাপশন পাঠানো হবে
+        await client.send_message(msg_to_edit.chat.id, "⚠️ **Image could not be generated.**\n\n" + caption, reply_markup=InlineKeyboardMarkup(buttons))
 
 @bot.on_callback_query(filters.regex("^(get_|post_)"))
 async def final_action_callback(client, cb):
