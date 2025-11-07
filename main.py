@@ -5,7 +5,7 @@ import os
 import io
 import sys
 import re
-import base64  # <--- এই নতুন লাইনটি যোগ করা হয়েছে
+import base64
 import asyncio
 from threading import Thread
 
@@ -24,16 +24,13 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")  # <--- নতুন ImgBB কী যুক্ত করা হয়েছে
+IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
 # --- Essential variable check ---
 if not all([BOT_TOKEN, API_ID, API_HASH, TMDB_API_KEY]):
     print("❌ FATAL ERROR: One or more environment variables are missing. Please check your .env file.")
     sys.exit(1)
 
-# ==============================================================================
-# ======[ আপনার অনুরোধ অনুযায়ী নতুন চেক যুক্ত করা হয়েছে (IMGBB কী) ]======
-# ==============================================================================
 if not IMGBB_API_KEY:
     print("❌ FATAL ERROR: IMGBB_API_KEY is missing in your .env file. Please get it from api.imgbb.com.")
     sys.exit(1)
@@ -133,20 +130,43 @@ def get_tmdb_details(media_type: str, media_id: int):
         return None
 
 # ==============================================================================
-# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে (নতুন ImgBB আপলোডার) ]======
+# ======[ আপনার অনুরোধ অনুযায়ী নতুন অপ্টিমাইজেশন ফাংশন যুক্ত করা হয়েছে ]======
 # ==============================================================================
+def optimize_image(image_bytes_io: io.BytesIO, max_width=600, quality=85):
+    """Resizes and compresses an image to reduce file size."""
+    try:
+        img = Image.open(image_bytes_io)
+        
+        # Convert non-RGB images (like RGBA, P) to RGB
+        if img.mode not in ('RGB', 'L'): # L is for grayscale
+            img = img.convert('RGB')
+
+        if img.width > max_width:
+            aspect_ratio = img.height / img.width
+            new_height = int(max_width * aspect_ratio)
+            img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+        
+        optimized_bytes = io.BytesIO()
+        img.save(optimized_bytes, format='JPEG', quality=quality, optimize=True)
+        optimized_bytes.seek(0)
+        
+        original_size = image_bytes_io.tell() / 1024
+        new_size = optimized_bytes.tell() / 1024
+        print(f"✅ Image optimized: {original_size:.2f} KB -> {new_size:.2f} KB")
+        
+        return optimized_bytes
+    except Exception as e:
+        print(f"⚠️ Could not optimize image: {e}")
+        return image_bytes_io # Return original if optimization fails
+
 def upload_to_imgbb(image_bytes_io: io.BytesIO):
     """Uploads an image from bytes to ImgBB and returns the URL."""
     try:
-        image_bytes_io.seek(0)
         image_b64 = base64.b64encode(image_bytes_io.read())
         
         url = "https://api.imgbb.com/1/upload"
-        payload = {
-            "key": IMGBB_API_KEY,
-            "image": image_b64,
-        }
-        response = requests.post(url, payload, timeout=25)
+        payload = {"key": IMGBB_API_KEY, "image": image_b64}
+        response = requests.post(url, payload, timeout=30)
         response.raise_for_status()
         
         result = response.json()
@@ -157,7 +177,6 @@ def upload_to_imgbb(image_bytes_io: io.BytesIO):
         else:
             print(f"⚠️ ImgBB API error: {result.get('error', {}).get('message')}")
             return None
-            
     except requests.exceptions.RequestException as e:
         print(f"⚠️ Error uploading image to ImgBB: {e}")
         return None
@@ -294,14 +313,19 @@ def generate_html(data: dict, links: list):
 def generate_image(data: dict):
     try:
         poster_bytes = None
-        if data.get("manual_poster"):
-            poster_bytes = data["manual_poster"].getvalue()
+        # Check if manual poster (already uploaded) URL is available
+        if data.get('manual_poster_url'):
+            response = requests.get(data['manual_poster_url'])
+            if response.ok:
+                poster_bytes = response.content
         elif data.get('poster_path'):
             poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
             poster_response = requests.get(poster_url)
             if poster_response.ok:
                 poster_bytes = poster_response.content
+
         if not poster_bytes: return None
+        
         poster_img = Image.open(io.BytesIO(poster_bytes)).convert("RGBA").resize((400, 600))
         bg_img = Image.new('RGBA', (1280, 720), (10, 10, 20))
         if data.get('backdrop_path'):
@@ -433,15 +457,40 @@ async def process_text_input(client, message: Message):
 async def text_handler(client, message: Message):
     await process_text_input(client, message)
 
+# ==============================================================================
+# ======[ আপনার অনুরোধ অনুযায়ী এই অংশটি উন্নত করা হয়েছে (তাত্ক্ষণিক আপলোড) ]======
+# ==============================================================================
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
     user_id = message.from_user.id
-    if (convo := user_conversations.get(user_id)) and convo.get("state") == "manual_wait_poster":
-        processing_msg = await message.reply_text("🖼️ Receiving poster...")
-        photo_file = await client.download_media(message.photo.file_id, in_memory=True)
-        convo["details"]["manual_poster"] = photo_file
+    if not ((convo := user_conversations.get(user_id)) and convo.get("state") == "manual_wait_poster"):
+        return
+
+    processing_msg = await message.reply_text("🖼️ Poster received. Optimizing and uploading, please wait...")
+    
+    # Download photo to memory
+    photo_bytes = await client.download_media(message.photo.file_id, in_memory=True)
+    
+    # Optimize the image
+    optimized_photo_bytes = optimize_image(photo_bytes)
+    
+    # Upload the optimized image
+    poster_url = upload_to_imgbb(optimized_photo_bytes)
+
+    if poster_url:
+        convo["details"]["manual_poster_url"] = poster_url
         convo["state"] = "wait_custom_language"
-        await processing_msg.edit_text("✅ Poster received!\n\n**🗣️ Now, enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`).")
+        await processing_msg.edit_text(
+            "✅ Poster uploaded successfully!\n\n"
+            "**🗣️ Now, enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`)."
+        )
+    else:
+        # If upload fails, continue without poster but inform user
+        convo["state"] = "wait_custom_language"
+        await processing_msg.edit_text(
+            "⚠️ **Poster Upload Failed!** The post will use a placeholder image.\n\n"
+            "**🗣️ Please enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`)."
+        )
 
 @bot.on_callback_query(filters.regex("^select_"))
 async def selection_callback(client, cb):
@@ -531,24 +580,6 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
     
     await msg_to_edit.edit_text("⏳ Generating content...")
-
-    if manual_poster_bytes := convo["details"].get("manual_poster"):
-        await msg_to_edit.edit_text("🖼️ Uploading manual poster to ImgBB...")
-        # ==============================================================================
-        # ======[ এই ফাংশনটি এখন নতুন ImgBB আপলোডার ব্যবহার করবে ]======
-        # ==============================================================================
-        poster_url = upload_to_imgbb(manual_poster_bytes)
-        if poster_url:
-            convo["details"]["manual_poster_url"] = poster_url
-            await msg_to_edit.edit_text("✅ Poster uploaded successfully!")
-            await asyncio.sleep(2)
-        else:
-            await msg_to_edit.edit_text(
-                "⚠️ **Poster Upload Failed!**\n"
-                "The post will be generated with a placeholder image. "
-                "Please check your `IMGBB_API_KEY` and bot logs."
-            )
-            await asyncio.sleep(5)
 
     caption = generate_formatted_caption(convo["details"])
     html_code = generate_html(convo["details"], convo["links"])
