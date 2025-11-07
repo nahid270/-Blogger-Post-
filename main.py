@@ -522,7 +522,7 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
         await client.send_message(msg_to_edit.chat.id, caption, reply_markup=InlineKeyboardMarkup(buttons))
 
 # ==============================================================================
-# ======[ THIS IS THE ONLY FUNCTION THAT HAS BEEN MODIFIED ]======
+# ======[ FINAL & IMPROVED FUNCTION FOR ONE-CLICK COPY ]======
 # ==============================================================================
 @bot.on_callback_query(filters.regex("^(get_|post_)"))
 async def final_action_callback(client, cb):
@@ -540,25 +540,37 @@ async def final_action_callback(client, cb):
     generated = convo["generated"]
     
     if action == "get_html":
-        await cb.answer()
+        await cb.answer("🔗 আপনার কোডের জন্য একটি লিংক তৈরি করা হচ্ছে...", show_alert=False)
         html_code = generated.get("html", "")
-        
-        # Safe character limit for a Telegram message
-        safe_limit = 4000
-        
-        if len(html_code) <= safe_limit:
-            # If the code is short enough, send it in a single message
-            await client.send_message(cb.message.chat.id, f"```html\n{html_code}\n```", parse_mode=enums.ParseMode.MARKDOWN)
-        else:
-            # If the code is too long, split it into multiple messages
-            await client.send_message(
-                cb.message.chat.id,
-                "📝 **HTML কোডটি বড় হওয়ায় কয়েকটি অংশে পাঠানো হচ্ছে।**\n\nঅনুগ্রহ করে নিচের সবগুলো অংশ একসাথে কপি করে আপনার ব্লগারে ব্যবহার করুন:"
+
+        try:
+            # Post the code to a pasting service to get a single link
+            response = requests.post("https://dpaste.com/api/", data={"content": html_code, "syntax": "html"})
+            response.raise_for_status()  # Raise an exception for bad status codes
+            
+            paste_url = response.text.strip()
+            
+            # Send the link to the user with a button
+            await cb.message.reply_text(
+                "✅ **আপনার ব্লগার কোড প্রস্তুত!**\n\n"
+                "নিচের বাটনে ক্লিক করে ব্রাউজারে খুলুন এবং সম্পূর্ণ কোডটি একবারে কপি করে নিন।",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔗 কোড কপি করতে এখানে ক্লিক করুন", url=paste_url)]]
+                )
             )
-            # Split the code into chunks and send each one
-            for i in range(0, len(html_code), safe_limit):
-                chunk = html_code[i:i + safe_limit]
-                await client.send_message(cb.message.chat.id, f"```{chunk}```")
+
+        except requests.exceptions.RequestException as e:
+            # Fallback: If the pasting service fails, send the code as a file
+            print(f"Error creating paste link: {e}")
+            await cb.message.reply_text(
+                "⚠️ **দুঃখিত!**\n"
+                "কোডটির জন্য অনলাইন লিংক তৈরি করা সম্ভব হয়নি। সম্ভবত ইন্টারনেট বা সার্ভারজনিত সমস্যা হয়েছে।\n\n"
+                "**বিকল্প হিসেবে, সম্পূর্ণ কোডটি একটি ফাইল (`.html`) হিসেবে পাঠানো হলো।**",
+            )
+            title = (convo["details"].get("title") or "post").replace(" ", "_")
+            file_bytes = io.BytesIO(html_code.encode('utf-8'))
+            file_bytes.name = f"{title}.html"
+            await client.send_document(cb.message.chat.id, document=file_bytes)
 
     elif action == "get_caption":
         await cb.answer()
