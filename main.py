@@ -150,7 +150,7 @@ def generate_formatted_caption(data: dict):
     return caption_text
 
 # ==============================================================================
-# ======[ THIS IS THE ONLY FUNCTION THAT HAS BEEN MODIFIED ]======
+# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে ]======
 # ==============================================================================
 def generate_html(data: dict, links: list):
     TIMER_SECONDS = 10
@@ -161,9 +161,22 @@ def generate_html(data: dict, links: list):
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
     poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get('poster_path') else "https://via.placeholder.com/400x600.png?text=No+Poster"
-    link_480p = next((link['url'] for link in links if '480' in link['label']), "#")
-    link_720p = next((link['url'] for link in links if '720' in link['label']), "#")
-    link_1080p = next((link['url'] for link in links if '1080' in link['label']), "#")
+
+    # --- ডাইনামিকভাবে ডাউনলোড বাটন তৈরি করার অংশ ---
+    download_blocks_html = ""
+    if not links:
+        download_blocks_html = "<p>No download links available.</p>"
+    else:
+        for link in links:
+            # এখানে প্রতিটি লিঙ্কের জন্য আলাদা ডাউনলোড ব্লক তৈরি করা হচ্ছে
+            download_blocks_html += f"""
+            <div class="dl-download-block">
+                <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
+                <div class="dl-timer-display"></div>
+                <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get {link['label']}</a>
+            </div>
+            """
+
     final_html = f"""
 <!-- Bot Generated Content Starts -->
 <!-- Movie Info -->
@@ -202,22 +215,9 @@ def generate_html(data: dict, links: list):
                 <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
             </div>
 
-            <!-- Download Blocks -->
-            <div class="dl-download-block">
-                <button class="dl-download-button" data-quality="480p" data-click-count="0">⬇️ Download 480p</button>
-                <div class="dl-timer-display"></div>
-                <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get 480p Link</a>
-            </div>
-            <div class="dl-download-block">
-                <button class="dl-download-button" data-quality="720p" data-click-count="0">⬇️ Download 720p</button>
-                <div class="dl-timer-display"></div>
-                <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get 720p Link</a>
-            </div>
-            <div class="dl-download-block">
-                <button class="dl-download-button" data-quality="1080p" data-click-count="0">⬇️ Download 1080p</button>
-                <div class="dl-timer-display"></div>
-                <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get 1080p Link</a>
-            </div>
+            <!-- Download Blocks (এগুলো এখন ডাইনামিকভাবে তৈরি হবে) -->
+            {download_blocks_html}
+            
             <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
             <a class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank" rel="noopener noreferrer">💋 Join Telegram Channel</a>
         </div>
@@ -226,7 +226,6 @@ def generate_html(data: dict, links: list):
     document.addEventListener('DOMContentLoaded', function() {{
         const AD_LINK = "{AD_LINK}";
         const TIMER_SECONDS = {TIMER_SECONDS};
-        const downloadLinks = {{ '480p': "{link_480p}", '720p': "{link_720p}", '1080p': "{link_1080p}" }};
         
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
@@ -234,6 +233,8 @@ def generate_html(data: dict, links: list):
                 const block = button.parentElement;
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
+                const downloadUrl = button.dataset.url; // <-- লিঙ্কটি এখান থেকে নেওয়া হচ্ছে
+
                 if (clickCount === 0) {{
                     window.open(AD_LINK, "_blank");
                     button.innerText = "Click Again to Start Timer";
@@ -241,8 +242,9 @@ def generate_html(data: dict, links: list):
                 }} else if (clickCount === 1) {{
                     button.style.display = 'none';
                     timerDisplay.style.display = 'block';
-                    const quality = button.dataset.quality;
-                    realDownloadLink.href = downloadLinks[quality];
+                    
+                    realDownloadLink.href = downloadUrl; // <-- আসল লিঙ্ক সেট করা হচ্ছে
+                    
                     let timeLeft = TIMER_SECONDS;
                     timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
                     const timer = setInterval(() => {{
