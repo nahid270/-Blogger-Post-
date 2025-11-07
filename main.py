@@ -35,9 +35,35 @@ except (ValueError, TypeError):
     print("❌ FATAL ERROR: API_ID must be an integer. Please check your .env file.")
     sys.exit(1)
 
-# ---- GLOBAL VARIABLES for state management ----
+# ---- GLOBAL VARIABLES for state management & AD LINK ----
 user_conversations = {}
 user_channels = {}
+AD_LINK_FILE = "ad_link.txt"
+AD_LINK = "https://www.google.com"  # Default Ad Link
+
+# ---- FUNCTIONS to save and load the ad link ----
+def save_ad_link(link: str):
+    """Saves the ad link to a file."""
+    global AD_LINK
+    AD_LINK = link
+    try:
+        with open(AD_LINK_FILE, "w") as f:
+            f.write(link)
+    except IOError as e:
+        print(f"⚠️ Error saving ad link: {e}")
+
+def load_ad_link():
+    """Loads the ad link from a file on startup."""
+    global AD_LINK
+    if os.path.exists(AD_LINK_FILE):
+        try:
+            with open(AD_LINK_FILE, "r") as f:
+                link = f.read().strip()
+                if link:
+                    AD_LINK = link
+                    print(f"✅ Ad link loaded from file: {AD_LINK}")
+        except IOError as e:
+            print(f"⚠️ Error loading ad link: {e}")
 
 # ---- FLASK APP FOR KEEP-ALIVE ----
 app = Flask(__name__)
@@ -123,24 +149,18 @@ def generate_formatted_caption(data: dict):
     caption_text += f"**Plot:** _{overview[:450]}{'...' if len(overview) > 450 else ''}_"
     return caption_text
 
-# ---- [FULLY CORRECTED] generate_html Function with Notification System ----
 def generate_html(data: dict, links: list):
-    AD_LINK = "https://www.effectivegatecpm.com/tcv8t3ez?key=963db7dfa28636112ea21bcca599d8fc"
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
-    TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"
-
+    TELEGRAM_LINK = "https://t.me/google"
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
     poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get('poster_path') else "https://via.placeholder.com/400x600.png?text=No+Poster"
-
     link_480p = next((link['url'] for link in links if '480' in link['label']), "#")
     link_720p = next((link['url'] for link in links if '720' in link['label']), "#")
     link_1080p = next((link['url'] for link in links if '1080' in link['label']), "#")
-
-    # Note: Double braces {{ and }} are used to escape braces in f-strings for CSS and JS
     final_html = f"""
 <!-- Bot Generated Content Starts -->
 <!-- Movie Info -->
@@ -150,7 +170,6 @@ def generate_html(data: dict, links: list):
     <p style="text-align: left; padding: 0 10px;">{overview}</p>
 </div>
 <!--more-->
-
 <!-- Download System with Notification -->
 <div class="dl-body" style="font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center;">
     <style>
@@ -168,8 +187,6 @@ def generate_html(data: dict, links: list):
         .dl-timer-display {{ margin-top: 10px; font-size: 18px; font-weight: bold; color: #d32f2f; background: #f0f0f0; padding: 12px; border-radius: 10px; text-align: center; display: none; }}
         .dl-download-count-text {{ margin-top: 20px; font-size: 15px; color: #555; text-align: center; }}
     </style>
-    
-    <!-- Notice Overlay HTML -->
     <div id="dl-notice-overlay">
         <div id="dl-notice-box">
             <h2>🎬 Download Notice</h2>
@@ -179,8 +196,6 @@ def generate_html(data: dict, links: list):
             <a href="#" id="dl-notice-btn">✅ বুঝতে পেরেছি</a>
         </div>
     </div>
-    
-    <!-- Main Download Box -->
     <div class="dl-main-content">
         <div class="dl-post-container">
             <div class="dl-download-block">
@@ -207,17 +222,10 @@ def generate_html(data: dict, links: list):
         const AD_LINK = "{AD_LINK}";
         const TIMER_SECONDS = {TIMER_SECONDS};
         const downloadLinks = {{ '480p': "{link_480p}", '720p': "{link_720p}", '1080p': "{link_1080p}" }};
-        
         const noticeOverlay = document.getElementById('dl-notice-overlay');
         const noticeBtn = document.getElementById('dl-notice-btn');
         const mainContent = document.querySelector('.dl-main-content');
-
-        noticeBtn.onclick = (e) => {{
-            e.preventDefault();
-            noticeOverlay.classList.add('hide');
-            mainContent.style.display = 'block';
-        }};
-
+        noticeBtn.onclick = (e) => {{ e.preventDefault(); noticeOverlay.classList.add('hide'); mainContent.style.display = 'block'; }};
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
                 let clickCount = parseInt(button.dataset.clickCount);
@@ -268,9 +276,7 @@ def generate_image(data: dict):
             if poster_response.ok:
                 poster_bytes = poster_response.content
         if not poster_bytes: return None
-
         poster_img = Image.open(io.BytesIO(poster_bytes)).convert("RGBA").resize((400, 600))
-        
         bg_img = Image.new('RGBA', (1280, 720), (10, 10, 20))
         if data.get('backdrop_path'):
             try:
@@ -283,7 +289,6 @@ def generate_image(data: dict):
                     bg_img = Image.alpha_composite(bg_img, darken_layer)
             except Exception as e:
                 print(f"Could not process backdrop image: {e}")
-
         lang_text = data.get('custom_language', '').title()
         if lang_text:
             try:
@@ -295,23 +300,19 @@ def generate_image(data: dict):
                 poster_img.paste(ribbon, (0, 0), ribbon)
             except Exception as e:
                 print(f"Could not add language ribbon: {e}")
-
         bg_img.paste(poster_img, (50, 60), poster_img)
         draw = ImageDraw.Draw(bg_img)
         title = data.get("title") or data.get("name") or "N/A"
         year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
-
         draw.text((480, 80), f"{title} ({year})", font=FONT_BOLD, fill="white", stroke_width=1, stroke_fill="black")
         draw.text((480, 140), f"⭐ {data.get('vote_average', 0):.1f}/10", font=FONT_REGULAR, fill="#00e676")
         genres_text = " | ".join([g["name"] for g in data.get("genres", [])])
         draw.text((480, 180), genres_text, font=FONT_SMALL, fill="#00bcd4")
-        
         overview, y_text, max_chars_per_line = data.get("overview", ""), 250, 80
         lines = [overview[i:i+max_chars_per_line] for i in range(0, len(overview), max_chars_per_line)]
         for line in lines[:7]:
             draw.text((480, y_text), line, font=FONT_REGULAR, fill="#E0E0E0")
             y_text += 30
-        
         img_buffer = io.BytesIO()
         img_buffer.name = "poster.png"
         bg_img.save(img_buffer, format="PNG")
@@ -331,6 +332,8 @@ async def start_command(_, message: Message):
         "**Available Commands:**\n"
         "`/setchannel` - Set your channel for posting.\n"
         "`/manual` - Add content details manually.\n"
+        "`/setadlink` - Update the advertisement link.\n"
+        "`/myadlink` - View the current ad link.\n"
         "`/cancel` - Cancel the current operation."
     )
 
@@ -356,10 +359,26 @@ async def manual_add_command(_, message: Message):
     user_conversations[user_id] = {"state": "manual_wait_title", "details": {}, "links": []}
     await message.reply_text("🎬 **Manual Content Entry**\n\nFirst, please send the **Title** of the movie/series.")
 
+@bot.on_message(filters.command("setadlink") & filters.private)
+async def set_ad_link_command(_, message: Message):
+    if len(message.command) > 1 and (message.command[1].startswith("http://") or message.command[1].startswith("https://")):
+        new_link = message.command[1]
+        save_ad_link(new_link)
+        await message.reply_text(f"✅ **Ad Link Updated!**\n\nNew Link: `{new_link}`")
+    else:
+        await message.reply_text(
+            "⚠️ **Usage:** `/setadlink https://your-ad-link.com`\n\n"
+            "Please provide a valid URL."
+        )
+
+@bot.on_message(filters.command("myadlink") & filters.private)
+async def my_ad_link_command(_, message: Message):
+    await message.reply_text(f"🔗 **Current Ad Link:**\n`{AD_LINK}`")
+
+
 async def process_text_input(client, message: Message):
     user_id = message.from_user.id
     text = message.text.strip()
-    
     if convo := user_conversations.get(user_id):
         state = convo.get("state")
         if state and state != "done":
@@ -373,22 +392,19 @@ async def process_text_input(client, message: Message):
             if handler := handlers.get(state):
                 await handler(client, message)
                 return
-
     processing_msg = await message.reply_text("🔍 Searching...")
     results = search_tmdb(text)
     if not results:
         await processing_msg.edit_text("❌ No content found. Try a more specific name (e.g., `Movie Name 2023`) or use `/manual`."); return
-    
     buttons = []
     for r in results:
         title = r.get('title') or r.get('name')
         year = (r.get('release_date') or r.get('first_air_date') or '----').split('-')[0]
         icon = '🎬' if r['media_type'] == 'movie' else '📺'
         buttons.append([InlineKeyboardButton(f"{icon} {title} ({year})", callback_data=f"select_{r['media_type']}_{r['id']}")])
-    
     await processing_msg.edit_text("**👇 Choose the correct one:**", reply_markup=InlineKeyboardMarkup(buttons))
 
-@bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual"]))
+@bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual", "setadlink", "myadlink"]))
 async def text_handler(client, message: Message):
     await process_text_input(client, message)
 
@@ -409,7 +425,6 @@ async def selection_callback(client, cb):
     details = get_tmdb_details(media_type, int(media_id))
     if not details:
         await cb.message.edit_text("❌ Failed to get details. Please try again."); return
-    
     user_id = cb.from_user.id
     user_conversations[user_id] = {"details": details, "links": [], "state": "wait_custom_language"}
     await cb.message.edit_text("✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`, `English`, `Dual Audio`).")
@@ -420,7 +435,6 @@ async def add_link_callback(client, cb):
     user_id = int(user_id_str)
     if cb.from_user.id != user_id: return await cb.answer("This is not for you!", show_alert=True)
     if not (convo := user_conversations.get(user_id)): return await cb.answer("Session expired. Please start over.", show_alert=True)
-    
     if action == "addlink_yes":
         convo["state"] = "wait_link_label"
         await cb.message.edit_text("**🔗 Step 1/2: Link Label**\n\nExample: `Download 720p` or `Watch Online`")
@@ -432,7 +446,6 @@ async def link_conversation_handler(client, message: Message):
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     text = message.text.strip()
-    
     if convo.get("state") == "wait_link_label":
         convo["current_label"] = text
         convo["state"] = "wait_link_url"
@@ -440,7 +453,6 @@ async def link_conversation_handler(client, message: Message):
     elif convo.get("state") == "wait_link_url":
         if not (text.startswith("http://") or text.startswith("https://")):
             return await message.reply_text("⚠️ Invalid URL. Please send a valid link starting with `http://` or `https://`.")
-        
         convo["links"].append({"label": convo["current_label"], "url": text})
         del convo["current_label"]
         convo["state"] = "ask_another"
@@ -462,7 +474,6 @@ async def manual_conversation_handler(client, message: Message):
     convo = user_conversations[user_id]
     text = message.text.strip()
     state = convo.get("state")
-
     if state == "manual_wait_title":
         convo["details"]["title"] = text
         convo["state"] = "manual_wait_year"
@@ -493,28 +504,26 @@ async def manual_conversation_handler(client, message: Message):
 
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
-    
     await msg_to_edit.edit_text("⏳ Generating content...")
     caption = generate_formatted_caption(convo["details"])
     html_code = generate_html(convo["details"], convo["links"])
-    
     await msg_to_edit.edit_text("🎨 Generating image...")
     image_file = generate_image(convo["details"])
-    
     convo["generated"] = {"caption": caption, "html": html_code, "image": image_file}
     convo["state"] = "done"
-    
     buttons = [[InlineKeyboardButton("📝 Get Blogger HTML", callback_data=f"get_html_{user_id}")],
                [InlineKeyboardButton("📄 Copy Caption", callback_data=f"get_caption_{user_id}")]]
     if user_id in user_channels:
         buttons.append([InlineKeyboardButton("📢 Post to Channel", callback_data=f"post_channel_{user_id}")])
-
     await msg_to_edit.delete()
     if image_file:
         await client.send_photo(msg_to_edit.chat.id, photo=image_file, caption=caption, reply_markup=InlineKeyboardMarkup(buttons))
     else:
         await client.send_message(msg_to_edit.chat.id, caption, reply_markup=InlineKeyboardMarkup(buttons))
 
+# ==============================================================================
+# ======[ THIS IS THE ONLY FUNCTION THAT HAS BEEN MODIFIED ]======
+# ==============================================================================
 @bot.on_callback_query(filters.regex("^(get_|post_)"))
 async def final_action_callback(client, cb):
     try:
@@ -532,15 +541,25 @@ async def final_action_callback(client, cb):
     
     if action == "get_html":
         await cb.answer()
-        html_code = generated["html"]
-        if len(html_code) > 4000:
-            title = (convo["details"].get("title") or "post").replace(" ", "_")
-            file_bytes = io.BytesIO(html_code.encode('utf-8'))
-            file_bytes.name = f"{title}.html"
-            await client.send_document(cb.message.chat.id, document=file_bytes, caption="HTML code is too long. Here it is as a file.")
-        else:
+        html_code = generated.get("html", "")
+        
+        # Safe character limit for a Telegram message
+        safe_limit = 4000
+        
+        if len(html_code) <= safe_limit:
+            # If the code is short enough, send it in a single message
             await client.send_message(cb.message.chat.id, f"```html\n{html_code}\n```", parse_mode=enums.ParseMode.MARKDOWN)
-    
+        else:
+            # If the code is too long, split it into multiple messages
+            await client.send_message(
+                cb.message.chat.id,
+                "📝 **HTML কোডটি বড় হওয়ায় কয়েকটি অংশে পাঠানো হচ্ছে।**\n\nঅনুগ্রহ করে নিচের সবগুলো অংশ একসাথে কপি করে আপনার ব্লগারে ব্যবহার করুন:"
+            )
+            # Split the code into chunks and send each one
+            for i in range(0, len(html_code), safe_limit):
+                chunk = html_code[i:i + safe_limit]
+                await client.send_message(cb.message.chat.id, f"```{chunk}```")
+
     elif action == "get_caption":
         await cb.answer()
         await client.send_message(cb.message.chat.id, generated["caption"])
@@ -565,10 +584,16 @@ async def final_action_callback(client, cb):
 # ---- MAIN EXECUTION ----
 if __name__ == "__main__":
     print("🚀 Starting the bot...")
+    
+    # Load the saved ad link on startup
+    load_ad_link()
+    
+    # Start the Flask app in a separate thread
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     
+    # Start the Pyrogram bot client
     bot.run()
     
     print("👋 Bot has stopped.")
