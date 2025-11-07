@@ -6,6 +6,7 @@ import io
 import sys
 import re
 import requests
+import asyncio  # <--- এই নতুন লাইনটি যোগ করা হয়েছে
 from threading import Thread
 
 # --- Third-party Library Imports ---
@@ -110,10 +111,7 @@ def search_tmdb(query: str):
         response = requests.get(search_url, timeout=10)
         response.raise_for_status()
         results = [r for r in response.json().get("results", []) if r.get("media_type") in ["movie", "tv"]]
-        # ==============================================================================
-        # ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে (সার্চ লিমিট) ]======
-        # ==============================================================================
-        return results[:15] # Increased search limit to 15
+        return results[:15] # Increased search limit
     except requests.exceptions.RequestException as e:
         print(f"Error searching TMDB: {e}")
         return []
@@ -128,19 +126,27 @@ def get_tmdb_details(media_type: str, media_id: int):
         print(f"Error fetching TMDB details: {e}")
         return None
 
-# ---- New function to upload image ----
+# ==============================================================================
+# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী উন্নত করা হয়েছে (ইমেজ আপলোডার) ]======
+# ==============================================================================
 def upload_to_telegraph(image_bytes_io: io.BytesIO):
     """Uploads an image from bytes to telegra.ph and returns the URL."""
     try:
         image_bytes_io.seek(0)
         files = {'file': ('image.png', image_bytes_io, 'image/png')}
-        response = requests.post('https://telegra.ph/upload', files=files, timeout=20)
+        # Add a common User-Agent to prevent getting blocked
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.post('https://telegra.ph/upload', files=files, headers=headers, timeout=20)
         response.raise_for_status()
         result = response.json()
         if isinstance(result, list) and result and 'src' in result[0]:
             image_url = "https://telegra.ph" + result[0]['src']
             print(f"✅ Image uploaded to: {image_url}")
             return image_url
+        else:
+            print(f"⚠️ Unexpected telegra.ph API response: {result}")
     except requests.exceptions.RequestException as e:
         print(f"⚠️ Error uploading image to telegra.ph: {e}")
     return None
@@ -169,9 +175,6 @@ def generate_formatted_caption(data: dict):
     caption_text += f"**Plot:** _{overview[:450]}{'...' if len(overview) > 450 else ''}_"
     return caption_text
 
-# ==============================================================================
-# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে (পোস্টার লজিক) ]======
-# ==============================================================================
 def generate_html(data: dict, links: list):
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
@@ -181,21 +184,20 @@ def generate_html(data: dict, links: list):
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
     
-    # --- পোস্টার URL নির্ধারণের জন্য উন্নত লজিক ---
-    poster_url = data.get('manual_poster_url')  # প্রথমে ম্যানুয়াল পোস্টার লিংক খোঁজা হবে
+    # --- Poster URL Logic ---
+    poster_url = data.get('manual_poster_url')  # Check for manual poster link first
     if not poster_url:
         if data.get('poster_path'):
             poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
         else:
-            poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster" # ফলব্যাক ইমেজ
+            poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
-    # --- ডাইনামিকভাবে ডাউনলোড বাটন তৈরি করার অংশ ---
+    # --- Dynamic download button generation ---
     download_blocks_html = ""
     if not links:
         download_blocks_html = "<p>No download links available.</p>"
     else:
         for link in links:
-            # এখানে প্রতিটি লিঙ্কের জন্য আলাদা ডাউনলোড ব্লক তৈরি করা হচ্ছে
             download_blocks_html += f"""
             <div class="dl-download-block">
                 <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
@@ -230,21 +232,15 @@ def generate_html(data: dict, links: list):
         .dl-download-count-text {{ margin-top: 20px; font-size: 15px; color: #555; text-align: center; }}
     </style>
     
-    <!-- Main Download Box -->
     <div class="dl-main-content">
         <div class="dl-post-container">
-            
-            <!-- Download Instructions Box -->
             <div class="dl-instruction-box">
                 <h2>🎬 ডাউনলোড করার নিয়মাবলী</h2>
                 <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
                 <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
                 <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
             </div>
-
-            <!-- Download Blocks (এগুলো এখন ডাইনামিকভাবে তৈরি হবে) -->
             {download_blocks_html}
-            
             <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
             <a class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank" rel="noopener noreferrer">💋 Join Telegram Channel</a>
         </div>
@@ -253,15 +249,13 @@ def generate_html(data: dict, links: list):
     document.addEventListener('DOMContentLoaded', function() {{
         const AD_LINK = "{AD_LINK}";
         const TIMER_SECONDS = {TIMER_SECONDS};
-        
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
                 let clickCount = parseInt(button.dataset.clickCount);
                 const block = button.parentElement;
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
-                const downloadUrl = button.dataset.url; // <-- লিঙ্কটি এখান থেকে নেওয়া হচ্ছে
-
+                const downloadUrl = button.dataset.url;
                 if (clickCount === 0) {{
                     window.open(AD_LINK, "_blank");
                     button.innerText = "Click Again to Start Timer";
@@ -269,9 +263,7 @@ def generate_html(data: dict, links: list):
                 }} else if (clickCount === 1) {{
                     button.style.display = 'none';
                     timerDisplay.style.display = 'block';
-                    
-                    realDownloadLink.href = downloadUrl; // <-- আসল লিঙ্ক সেট করা হচ্ছে
-                    
+                    realDownloadLink.href = downloadUrl;
                     let timeLeft = TIMER_SECONDS;
                     timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
                     const timer = setInterval(() => {{
@@ -533,21 +525,26 @@ async def manual_conversation_handler(client, message: Message):
         except ValueError:
             await message.reply_text("⚠️ Invalid rating. Send a number (e.g., `7.8`) or `N/A`.")
 
+# ==============================================================================
+# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী উন্নত করা হয়েছে (ইউজার ফিডব্যাক) ]======
+# ==============================================================================
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
     
     await msg_to_edit.edit_text("⏳ Generating content...")
 
-    # ==============================================================================
-    # ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে (পোস্টার আপলোড) ]======
-    # ==============================================================================
+    # --- Manual poster upload and feedback logic ---
     if manual_poster_bytes := convo["details"].get("manual_poster"):
-        await msg_to_edit.edit_text("🖼️ Uploading manual poster...")
+        await msg_to_edit.edit_text("🖼️ Uploading manual poster to the web...")
         poster_url = upload_to_telegraph(manual_poster_bytes)
         if poster_url:
             convo["details"]["manual_poster_url"] = poster_url
+            await msg_to_edit.edit_text("✅ Poster uploaded successfully!")
+            await asyncio.sleep(2) # Give user time to see the success message
         else:
-            await msg_to_edit.edit_text("⚠️ Failed to upload manual poster. Using a placeholder.")
+            # Inform the user about the failure
+            await msg_to_edit.edit_text("⚠️ **Poster Upload Failed!**\nThe post will be generated with a placeholder image. Please check bot logs for errors.")
+            await asyncio.sleep(4) # Give user time to read the error message
 
     caption = generate_formatted_caption(convo["details"])
     html_code = generate_html(convo["details"], convo["links"])
@@ -636,15 +633,12 @@ async def final_action_callback(client, cb):
 if __name__ == "__main__":
     print("🚀 Starting the bot...")
     
-    # Load the saved ad link on startup
     load_ad_link()
     
-    # Start the Flask app in a separate thread
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     
-    # Start the Pyrogram bot client
     bot.run()
     
     print("👋 Bot has stopped.")
