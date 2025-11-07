@@ -5,8 +5,8 @@ import os
 import io
 import sys
 import re
-import requests
-import asyncio  # <--- এই নতুন লাইনটি যোগ করা হয়েছে
+import base64  # <--- এই নতুন লাইনটি যোগ করা হয়েছে
+import asyncio
 from threading import Thread
 
 # --- Third-party Library Imports ---
@@ -24,10 +24,18 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")  # <--- নতুন ImgBB কী যুক্ত করা হয়েছে
 
 # --- Essential variable check ---
 if not all([BOT_TOKEN, API_ID, API_HASH, TMDB_API_KEY]):
     print("❌ FATAL ERROR: One or more environment variables are missing. Please check your .env file.")
+    sys.exit(1)
+
+# ==============================================================================
+# ======[ আপনার অনুরোধ অনুযায়ী নতুন চেক যুক্ত করা হয়েছে (IMGBB কী) ]======
+# ==============================================================================
+if not IMGBB_API_KEY:
+    print("❌ FATAL ERROR: IMGBB_API_KEY is missing in your .env file. Please get it from api.imgbb.com.")
     sys.exit(1)
 
 try:
@@ -36,15 +44,14 @@ except (ValueError, TypeError):
     print("❌ FATAL ERROR: API_ID must be an integer. Please check your .env file.")
     sys.exit(1)
 
-# ---- GLOBAL VARIABLES for state management & AD LINK ----
+# ---- GLOBAL VARIABLES ----
 user_conversations = {}
 user_channels = {}
 AD_LINK_FILE = "ad_link.txt"
-AD_LINK = "https://www.google.com"  # Default Ad Link
+AD_LINK = "https://www.google.com"
 
 # ---- FUNCTIONS to save and load the ad link ----
 def save_ad_link(link: str):
-    """Saves the ad link to a file."""
     global AD_LINK
     AD_LINK = link
     try:
@@ -54,7 +61,6 @@ def save_ad_link(link: str):
         print(f"⚠️ Error saving ad link: {e}")
 
 def load_ad_link():
-    """Loads the ad link from a file on startup."""
     global AD_LINK
     if os.path.exists(AD_LINK_FILE):
         try:
@@ -82,7 +88,7 @@ except Exception as e:
     print(f"❌ FATAL ERROR: Could not initialize the bot client. Error: {e}")
     sys.exit(1)
 
-# ---- FONT CONFIGURATION for Image Generation ----
+# ---- FONT CONFIGURATION ----
 try:
     FONT_BOLD = ImageFont.truetype("Poppins-Bold.ttf", 32)
     FONT_REGULAR = ImageFont.truetype("Poppins-Regular.ttf", 24)
@@ -111,7 +117,7 @@ def search_tmdb(query: str):
         response = requests.get(search_url, timeout=10)
         response.raise_for_status()
         results = [r for r in response.json().get("results", []) if r.get("media_type") in ["movie", "tv"]]
-        return results[:15] # Increased search limit
+        return results[:15]
     except requests.exceptions.RequestException as e:
         print(f"Error searching TMDB: {e}")
         return []
@@ -127,29 +133,34 @@ def get_tmdb_details(media_type: str, media_id: int):
         return None
 
 # ==============================================================================
-# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী উন্নত করা হয়েছে (ইমেজ আপলোডার) ]======
+# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী পরিবর্তন করা হয়েছে (নতুন ImgBB আপলোডার) ]======
 # ==============================================================================
-def upload_to_telegraph(image_bytes_io: io.BytesIO):
-    """Uploads an image from bytes to telegra.ph and returns the URL."""
+def upload_to_imgbb(image_bytes_io: io.BytesIO):
+    """Uploads an image from bytes to ImgBB and returns the URL."""
     try:
         image_bytes_io.seek(0)
-        files = {'file': ('image.png', image_bytes_io, 'image/png')}
-        # Add a common User-Agent to prevent getting blocked
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        image_b64 = base64.b64encode(image_bytes_io.read())
+        
+        url = "https://api.imgbb.com/1/upload"
+        payload = {
+            "key": IMGBB_API_KEY,
+            "image": image_b64,
         }
-        response = requests.post('https://telegra.ph/upload', files=files, headers=headers, timeout=20)
+        response = requests.post(url, payload, timeout=25)
         response.raise_for_status()
+        
         result = response.json()
-        if isinstance(result, list) and result and 'src' in result[0]:
-            image_url = "https://telegra.ph" + result[0]['src']
-            print(f"✅ Image uploaded to: {image_url}")
+        if result.get("success"):
+            image_url = result["data"]["url"]
+            print(f"✅ Image uploaded to ImgBB: {image_url}")
             return image_url
         else:
-            print(f"⚠️ Unexpected telegra.ph API response: {result}")
+            print(f"⚠️ ImgBB API error: {result.get('error', {}).get('message')}")
+            return None
+            
     except requests.exceptions.RequestException as e:
-        print(f"⚠️ Error uploading image to telegra.ph: {e}")
-    return None
+        print(f"⚠️ Error uploading image to ImgBB: {e}")
+        return None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
@@ -176,7 +187,7 @@ def generate_formatted_caption(data: dict):
     return caption_text
 
 def generate_html(data: dict, links: list):
-    TIMER_SECONDS = 10
+    TOTAL_WAIT_SECONDS = 15 
     INITIAL_DOWNLOADS = 493
     TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"
     title = data.get("title") or data.get("name") or "N/A"
@@ -184,15 +195,13 @@ def generate_html(data: dict, links: list):
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
     
-    # --- Poster URL Logic ---
-    poster_url = data.get('manual_poster_url')  # Check for manual poster link first
+    poster_url = data.get('manual_poster_url')
     if not poster_url:
         if data.get('poster_path'):
             poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
         else:
             poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
-    # --- Dynamic download button generation ---
     download_blocks_html = ""
     if not links:
         download_blocks_html = "<p>No download links available.</p>"
@@ -200,7 +209,7 @@ def generate_html(data: dict, links: list):
         for link in links:
             download_blocks_html += f"""
             <div class="dl-download-block">
-                <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
+                <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}">⬇️ {link['label']}</button>
                 <div class="dl-timer-display"></div>
                 <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get {link['label']}</a>
             </div>
@@ -208,19 +217,17 @@ def generate_html(data: dict, links: list):
 
     final_html = f"""
 <!-- Bot Generated Content Starts -->
-<!-- Movie Info -->
 <div style="text-align: center;">
     <img src="{poster_url}" alt="{title} Poster" style="max-width: 280px; border-radius: 8px; margin-bottom: 15px;">
     <h2>{title} ({year}) - {language}</h2>
     <p style="text-align: left; padding: 0 10px;">{overview}</p>
 </div>
 <!--more-->
-<!-- Download System with Notification -->
 <div class="dl-body" style="font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center;">
     <style>
         .dl-main-content {{ width: 100%; max-width: 500px; margin: auto; }}
         .dl-post-container {{ background: #ffffff; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); border: 1px solid #e7eaf3; }}
-        .dl-instruction-box {{ background-color: #fffbe6; border: 1px solid #ffe58f; color: #333; padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: center; }}
+        .dl-instruction-box {{ background-color: #e3f2fd; border: 1px solid #90caf9; color: #1e88e5; padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: center; }}
         .dl-instruction-box h2 {{ margin: 0 0 10px; font-size: 18px; }}
         .dl-instruction-box p {{ margin: 5px 0; font-size: 14px; line-height: 1.5; }}
         .dl-download-block {{ border: 1px solid #ddd; border-radius: 12px; padding: 15px; margin-bottom: 15px; }}
@@ -236,8 +243,8 @@ def generate_html(data: dict, links: list):
         <div class="dl-post-container">
             <div class="dl-instruction-box">
                 <h2>🎬 ডাউনলোড করার নিয়মাবলী</h2>
-                <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
-                <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
+                <p>ডাউনলোড বাটনে ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
+                <p>বিজ্ঞাপন খোলার পর টাইমার শেষ হওয়া পর্যন্ত অপেক্ষা করুন।</p>
                 <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
             </div>
             {download_blocks_html}
@@ -248,37 +255,33 @@ def generate_html(data: dict, links: list):
     <script>
     document.addEventListener('DOMContentLoaded', function() {{
         const AD_LINK = "{AD_LINK}";
-        const TIMER_SECONDS = {TIMER_SECONDS};
+        const TOTAL_WAIT_SECONDS = {TOTAL_WAIT_SECONDS};
         document.querySelectorAll('.dl-download-button').forEach(button => {{
-            button.onclick = () => {{
-                let clickCount = parseInt(button.dataset.clickCount);
-                const block = button.parentElement;
+            button.onclick = function() {{
+                this.onclick = null; 
+                this.style.background = '#aaa';
+                this.style.cursor = 'not-allowed';
+                const block = this.parentElement;
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
-                const downloadUrl = button.dataset.url;
-                if (clickCount === 0) {{
-                    window.open(AD_LINK, "_blank");
-                    button.innerText = "Click Again to Start Timer";
-                    button.dataset.clickCount = 1;
-                }} else if (clickCount === 1) {{
-                    button.style.display = 'none';
-                    timerDisplay.style.display = 'block';
-                    realDownloadLink.href = downloadUrl;
-                    let timeLeft = TIMER_SECONDS;
-                    timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
-                    const timer = setInterval(() => {{
-                        timeLeft--;
-                        timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
-                        if (timeLeft <= 0) {{
-                            clearInterval(timer);
-                            timerDisplay.style.display = 'none';
-                            realDownloadLink.style.display = 'block';
-                            const counter = document.getElementById('download-counter');
-                            if(counter) counter.innerText = parseInt(counter.innerText) + 1;
-                        }}
-                    }}, 1000);
-                    button.dataset.clickCount = 2;
-                }}
+                const downloadUrl = this.dataset.url;
+                window.open(AD_LINK, "_blank");
+                this.style.display = 'none';
+                timerDisplay.style.display = 'block';
+                realDownloadLink.href = downloadUrl;
+                let timeLeft = TOTAL_WAIT_SECONDS;
+                timerDisplay.innerText = `বিজ্ঞাপনটি দেখুন... লিঙ্ক পেতে অপেক্ষা করুন: ${{timeLeft}}s`;
+                const timer = setInterval(() => {{
+                    timeLeft--;
+                    timerDisplay.innerText = `অনুগ্রহ করে অপেক্ষা করুন: ${{timeLeft}}s`;
+                    if (timeLeft <= 0) {{
+                        clearInterval(timer);
+                        timerDisplay.style.display = 'none';
+                        realDownloadLink.style.display = 'block';
+                        const counter = document.getElementById('download-counter');
+                        if(counter) counter.innerText = parseInt(counter.innerText) + 1;
+                    }}
+                }}, 1000);
             }};
         }});
     }});
@@ -397,7 +400,6 @@ async def set_ad_link_command(_, message: Message):
 @bot.on_message(filters.command("myadlink") & filters.private)
 async def my_ad_link_command(_, message: Message):
     await message.reply_text(f"🔗 **Current Ad Link:**\n`{AD_LINK}`")
-
 
 async def process_text_input(client, message: Message):
     user_id = message.from_user.id
@@ -525,26 +527,28 @@ async def manual_conversation_handler(client, message: Message):
         except ValueError:
             await message.reply_text("⚠️ Invalid rating. Send a number (e.g., `7.8`) or `N/A`.")
 
-# ==============================================================================
-# ======[ এই ফাংশনটি আপনার অনুরোধ অনুযায়ী উন্নত করা হয়েছে (ইউজার ফিডব্যাক) ]======
-# ==============================================================================
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
     
     await msg_to_edit.edit_text("⏳ Generating content...")
 
-    # --- Manual poster upload and feedback logic ---
     if manual_poster_bytes := convo["details"].get("manual_poster"):
-        await msg_to_edit.edit_text("🖼️ Uploading manual poster to the web...")
-        poster_url = upload_to_telegraph(manual_poster_bytes)
+        await msg_to_edit.edit_text("🖼️ Uploading manual poster to ImgBB...")
+        # ==============================================================================
+        # ======[ এই ফাংশনটি এখন নতুন ImgBB আপলোডার ব্যবহার করবে ]======
+        # ==============================================================================
+        poster_url = upload_to_imgbb(manual_poster_bytes)
         if poster_url:
             convo["details"]["manual_poster_url"] = poster_url
             await msg_to_edit.edit_text("✅ Poster uploaded successfully!")
-            await asyncio.sleep(2) # Give user time to see the success message
+            await asyncio.sleep(2)
         else:
-            # Inform the user about the failure
-            await msg_to_edit.edit_text("⚠️ **Poster Upload Failed!**\nThe post will be generated with a placeholder image. Please check bot logs for errors.")
-            await asyncio.sleep(4) # Give user time to read the error message
+            await msg_to_edit.edit_text(
+                "⚠️ **Poster Upload Failed!**\n"
+                "The post will be generated with a placeholder image. "
+                "Please check your `IMGBB_API_KEY` and bot logs."
+            )
+            await asyncio.sleep(5)
 
     caption = generate_formatted_caption(convo["details"])
     html_code = generate_html(convo["details"], convo["links"])
