@@ -123,70 +123,128 @@ def generate_formatted_caption(data: dict):
     caption_text += f"**Plot:** _{overview[:450]}{'...' if len(overview) > 450 else ''}_"
     return caption_text
 
+# ---- [MODIFIED] generate_html Function ----
+# This function is now updated to generate the advanced download system.
 def generate_html(data: dict, links: list):
+    # --- Configuration ---
+    # আপনি এই মানগুলো এখানে পরিবর্তন করতে পারেন
+    AD_LINK = "https://www.effectivegatecpm.com/tcv8t3ez?key=963db7dfa28636112ea21bcca599d8fc"  # আপনার বিজ্ঞাপনের লিঙ্ক
+    TIMER_SECONDS = 10
+    INITIAL_DOWNLOADS = 493
+    TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"  # আপনার টেলিগ্রাম চ্যানেলের লিঙ্ক
+
+    # --- Extract basic movie info ---
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
-    rating = f"{data.get('vote_average', 0):.1f}"
-    overview = data.get("overview", "No overview available.")
-    genres = ", ".join([g["name"] for g in data.get("genres", [])] or ["N/A"])
     language = data.get('custom_language', '').title()
-
+    overview = data.get("overview", "No overview available.")
     if data.get('poster_path'):
         poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
     else:
-        poster_url = "https://www.prokerala.com/movies/assets/img/no-poster-available.jpg"
-    
-    backdrop_url = f"https://image.tmdb.org/t/p/original{data['backdrop_path']}" if data.get('backdrop_path') else ""
+        poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
-    css_styles = """
-<style>
-.movie-post-container {font-family: Arial, sans-serif; color: #333; line-height: 1.6;}
-.movie-post-container h2.post-title {text-align: center; font-size: 1.8em; margin-top: 15px; margin-bottom: 20px; font-weight: bold;}
-.movie-post-container h3.section-heading {background-color: #2c3e50; color: #ffffff; padding: 10px 15px; margin-top: 25px; margin-bottom: 15px; border-left: 5px solid #e74c3c; text-transform: uppercase; font-size: 1.2em; border-radius: 4px;}
-.movie-post-container p {margin: 8px 0; font-size: 1em;}
-.screenshots-div img {max-width: 100%; height: auto; border-radius: 8px; border: 3px solid #34495e;}
-.info-section p strong {min-width: 120px; display: inline-block;}
-.download-section ul {list-style: none; padding: 0; text-align: center;}
-.download-section li {margin: 10px 0;}
-.download-button {display: inline-block; background-color: #3498db; color: #ffffff !important; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 1em; border: none; transition: background-color 0.3s ease, transform 0.2s;}
-.download-button:hover {background-color: #2980b9; transform: scale(1.05); color: #ffffff !important;}
-</style>
+    # --- Process download links based on user-provided labels ---
+    # This smartly finds the right URL even if the label is "Download 480p" or "480p Link"
+    link_480p = next((link['url'] for link in links if '480' in link['label']), "#")
+    link_720p = next((link['url'] for link in links if '720' in link['label']), "#")
+    link_1080p = next((link['url'] for link in links if '1080' in link['label']), "#")
+
+    # --- The new HTML template with integrated JS download system ---
+    final_html = f"""
+<!-- Bot Generated Content Starts -->
+<!-- Movie Info -->
+<div style="text-align: center;">
+    <img src="{poster_url}" alt="{title} Poster" style="max-width: 350px; border-radius: 8px; margin-bottom: 15px;">
+    <h2>{title} ({year}) - {language}</h2>
+    <p style="text-align: left; padding: 0 10px;">{overview}</p>
+</div>
+<!--more-->
+
+<!-- Download System HTML -->
+<div class="dl-body" style="font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center;">
+    <style>
+        .dl-main-content {{ width: 100%; max-width: 500px; margin: auto; }}
+        .dl-post-container {{ background: #ffffff; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); border: 1px solid #e7eaf3; }}
+        .dl-download-block {{ border: 1px solid #ddd; border-radius: 12px; padding: 15px; margin-bottom: 15px; }}
+        .dl-download-button, .dl-real-download-link {{ display: block; width: 100%; padding: 15px; text-align: center; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.3s; box-sizing: border-box; }}
+        .dl-download-button {{ background: #ff5722; color: white !important; border: none; }}
+        .dl-download-button:hover {{ background: #e64a19; transform: scale(1.02); }}
+        .dl-real-download-link {{ background: #4caf50; color: white !important; display: none; }}
+        .dl-real-download-link:hover {{ background: #388e3c; transform: scale(1.02); }}
+        .dl-telegram-link {{ display: block; width: 100%; padding: 15px; text-align: center; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.3s; box-sizing: border-box; background: #0088cc; color: white !important; margin-top: 20px; }}
+        .dl-telegram-link:hover {{ background: #006699; }}
+        .dl-timer-display {{ margin-top: 10px; font-size: 18px; font-weight: bold; color: #d32f2f; background: #f0f0f0; padding: 12px; border-radius: 10px; text-align: center; display: none; }}
+        .dl-download-count-text {{ margin-top: 20px; font-size: 15px; color: #555; text-align: center; }}
+    </style>
+    <div class="dl-main-content">
+        <div class="dl-post-container">
+            <div class="dl-download-block">
+                <button class="dl-download-button" data-quality="480p" data-click-count="0">⬇️ Download 480p</button>
+                <div class="dl-timer-display"></div>
+                <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get 480p Link</a>
+            </div>
+            <div class="dl-download-block">
+                <button class="dl-download-button" data-quality="720p" data-click-count="0">⬇️ Download 720p</button>
+                <div class="dl-timer-display"></div>
+                <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get 720p Link</a>
+            </div>
+            <div class="dl-download-block">
+                <button class="dl-download-button" data-quality="1080p" data-click-count="0">⬇️ Download 1080p</button>
+                <div class="dl-timer-display"></div>
+                <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get 1080p Link</a>
+            </div>
+            <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
+            <a id="telegram-link" class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank" rel="noopener noreferrer">💋 Join Telegram Channel</a>
+        </div>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {{
+        const AD_LINK = "{AD_LINK}";
+        const TIMER_SECONDS = {TIMER_SECONDS};
+        const downloadLinks = {{
+            '480p': "{link_480p}",
+            '720p': "{link_720p}",
+            '1080p': "{link_1080p}",
+        }};
+        document.querySelectorAll('.dl-download-button').forEach(button => {{
+            button.onclick = () => {{
+                let clickCount = parseInt(button.dataset.clickCount);
+                const block = button.parentElement;
+                const timerDisplay = block.querySelector('.dl-timer-display');
+                const realDownloadLink = block.querySelector('.dl-real-download-link');
+                if (clickCount === 0) {{
+                    window.open(AD_LINK, "_blank");
+                    button.innerText = "Click Again to Start Timer";
+                    button.dataset.clickCount = 1;
+                }} else if (clickCount === 1) {{
+                    button.style.display = 'none';
+                    timerDisplay.style.display = 'block';
+                    const quality = button.dataset.quality;
+                    realDownloadLink.href = downloadLinks[quality];
+                    let timeLeft = TIMER_SECONDS;
+                    timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
+                    const timer = setInterval(() => {{
+                        timeLeft--;
+                        timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
+                        if (timeLeft <= 0) {{
+                            clearInterval(timer);
+                            timerDisplay.style.display = 'none';
+                            realDownloadLink.style.display = 'block';
+                            const counter = document.getElementById('download-counter');
+                            if(counter) {{
+                                counter.innerText = parseInt(counter.innerText) + 1;
+                            }}
+                        }}
+                    }}, 1000);
+                    button.dataset.clickCount = 2;
+                }}
+            }};
+        }});
+    }});
+    </script>
+</div>
+<!-- Bot Generated Content Ends -->
 """
-    poster_html = f'<img src="{poster_url}" alt="{title} Poster" style="display: block; margin-left: auto; margin-right: auto; max-width: 350px; height: auto; border-radius: 8px; border: 3px solid #34495e; margin-bottom: 20px;" />'
-    post_title_html = f'<h2 class="post-title">{title} ({year}) {language}</h2>'
-    jump_break_html = '<!--more-->'
-    movie_info_html = (
-        f'<h3 class="section-heading">Movie Information</h3>'
-        f'<div class="info-section">'
-        f'<p><strong>Full Name:</strong> {title}</p>'
-        f'<p><strong>Release Year:</strong> {year}</p>'
-        f'<p><strong>Genres:</strong> {genres}</p>'
-        f'<p><strong>Rating:</strong> ⭐ {rating}/10</p>'
-    )
-    if language: movie_info_html += f'<p><strong>Language:</strong> {language}</p>'
-    movie_info_html += '</div>'
-    storyline_html = f'<h3 class="section-heading">Storyline</h3><p>{overview}</p>'
-    screenshots_html = ""
-    if backdrop_url: screenshots_html = f'<h3 class="section-heading">Screenshots</h3><div class="screenshots-div"><a href="{backdrop_url}" target="_blank" rel="noopener noreferrer"><img src="{backdrop_url}" alt="{title} Screenshot"></a></div>'
-    download_buttons_html = ""
-    if links:
-        link_items = "".join([f'<li><a href="{link["url"]}" target="_blank" rel="noopener noreferrer" class="download-button">🔽 {link["label"]}</a></li>' for link in links])
-        download_buttons_html = f'<h3 class="section-heading">Download Links</h3><div class="download-section"><ul>{link_items}</ul></div>'
-    
-    final_html = (
-        f'{css_styles}'
-        f'<!-- Bot Generated Content Starts -->'
-        f'<div class="movie-post-container">'
-        f'{poster_html}'
-        f'{post_title_html}'
-        f'{jump_break_html}'
-        f'{movie_info_html}'
-        f'{storyline_html}'
-        f'{screenshots_html}'
-        f'{download_buttons_html}'
-        f'</div>'
-        f'<!-- Bot Generated Content Ends -->'
-    )
     return final_html
 
 def generate_image(data: dict):
@@ -320,11 +378,9 @@ async def process_text_input(client, message: Message):
     
     await processing_msg.edit_text("**👇 Choose the correct one:**", reply_markup=InlineKeyboardMarkup(buttons))
 
-# ############### THIS IS THE CORRECTED LINE ###############
 @bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual"]))
 async def text_handler(client, message: Message):
     await process_text_input(client, message)
-# ##########################################################
 
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
