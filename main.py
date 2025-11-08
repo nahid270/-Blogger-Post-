@@ -5,6 +5,7 @@ import os
 import io
 import sys
 import re
+import json
 import requests
 from threading import Thread
 
@@ -38,32 +39,31 @@ except (ValueError, TypeError):
 # ---- GLOBAL VARIABLES for state management & AD LINK ----
 user_conversations = {}
 user_channels = {}
-AD_LINK_FILE = "ad_link.txt"
-AD_LINK = "https://www.google.com"  # Default Ad Link
+USER_AD_LINKS_FILE = "user_ad_links.json"
+DEFAULT_AD_LINK = "https://www.google.com"  # Default Ad Link if a user hasn't set one
+user_ad_links = {}
 
-# ---- FUNCTIONS to save and load the ad link ----
-def save_ad_link(link: str):
-    """Saves the ad link to a file."""
-    global AD_LINK
-    AD_LINK = link
+# ---- FUNCTIONS to save and load user-specific ad links ----
+def save_user_ad_links():
+    """Saves the user ad links dictionary to a JSON file."""
     try:
-        with open(AD_LINK_FILE, "w") as f:
-            f.write(link)
+        with open(USER_AD_LINKS_FILE, "w") as f:
+            json.dump(user_ad_links, f, indent=4)
     except IOError as e:
-        print(f"⚠️ Error saving ad link: {e}")
+        print(f"⚠️ Error saving user ad links: {e}")
 
-def load_ad_link():
-    """Loads the ad link from a file on startup."""
-    global AD_LINK
-    if os.path.exists(AD_LINK_FILE):
+def load_user_ad_links():
+    """Loads user ad links from a JSON file on startup."""
+    global user_ad_links
+    if os.path.exists(USER_AD_LINKS_FILE):
         try:
-            with open(AD_LINK_FILE, "r") as f:
-                link = f.read().strip()
-                if link:
-                    AD_LINK = link
-                    print(f"✅ Ad link loaded from file: {AD_LINK}")
-        except IOError as e:
-            print(f"⚠️ Error loading ad link: {e}")
+            with open(USER_AD_LINKS_FILE, "r") as f:
+                user_ad_links = json.load(f)
+                # Ensure keys are integers if JSON saves them as strings
+                user_ad_links = {int(k): v for k, v in user_ad_links.items()}
+                print(f"✅ User ad links loaded from file.")
+        except (IOError, json.JSONDecodeError) as e:
+            print(f"⚠️ Error loading user ad links: {e}")
 
 # ---- FLASK APP FOR KEEP-ALIVE ----
 app = Flask(__name__)
@@ -172,7 +172,10 @@ def generate_formatted_caption(data: dict):
     caption_text += f"**Plot:** _{overview[:450]}{'...' if len(overview) > 450 else ''}_"
     return caption_text
 
-def generate_html(data: dict, links: list):
+def generate_html(data: dict, links: list, user_id: int):
+    # Fetch the user-specific ad link, or use the default one
+    ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
+    
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
     TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"
@@ -181,7 +184,6 @@ def generate_html(data: dict, links: list):
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
     
-    # <-- এখানে কোনো পরিবর্তনের প্রয়োজন নেই, এটি ஏற்கனவே URL সমর্থন করে -->
     if data.get('manual_poster_url'):
         poster_url = data['manual_poster_url']
     elif data.get('poster_path'):
@@ -240,7 +242,7 @@ def generate_html(data: dict, links: list):
                 <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
             </div>
 
-            <!-- Download Blocks (এগুলো এখন ডাইনামিকভাবে তৈরি হবে) -->
+            <!-- Download Blocks (Dynamically generated) -->
             {download_blocks_html}
             
             <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
@@ -249,7 +251,7 @@ def generate_html(data: dict, links: list):
     </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {{
-        const AD_LINK = "{AD_LINK}";
+        const AD_LINK = "{ad_link}";
         const TIMER_SECONDS = {TIMER_SECONDS};
         
         document.querySelectorAll('.dl-download-button').forEach(button => {{
@@ -279,8 +281,12 @@ def generate_html(data: dict, links: list):
                             clearInterval(timer);
                             timerDisplay.style.display = 'none';
                             realDownloadLink.style.display = 'block';
+                            // ---- THIS IS THE NEW COUNTER LOGIC ----
                             const counter = document.getElementById('download-counter');
-                            if(counter) counter.innerText = parseInt(counter.innerText) + 1;
+                            if(counter) {{
+                                counter.innerText = parseInt(counter.innerText) + 1;
+                            }}
+                            // ------------------------------------------
                         }}
                     }}, 1000);
                     button.dataset.clickCount = 2;
@@ -294,12 +300,10 @@ def generate_html(data: dict, links: list):
 """
     return final_html
 
-### <-- এখানে পরিবর্তন করা হয়েছে -->
 def generate_image(data: dict):
     """Generates the final image with movie/series details."""
     try:
         poster_bytes = None
-        # Step 1: ম্যানুয়ালি দেওয়া URL থেকে ছবি আনার চেষ্টা করবে
         if data.get("manual_poster_url"):
             try:
                 poster_response = requests.get(data["manual_poster_url"], timeout=15)
@@ -307,7 +311,6 @@ def generate_image(data: dict):
                     poster_bytes = poster_response.content
             except requests.exceptions.RequestException as e:
                 print(f"⚠️ Could not download manual poster from URL: {e}")
-        # Step 2: যদি URL না থাকে, তাহলে TMDB থেকে আনার চেষ্টা করবে
         elif data.get('poster_path'):
             poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
             poster_response = requests.get(poster_url)
@@ -373,8 +376,8 @@ async def start_command(_, message: Message):
         "**Available Commands:**\n"
         "`/setchannel` - Set your channel for posting.\n"
         "`/manual` - Add content details manually.\n"
-        "`/setadlink` - Update the advertisement link.\n"
-        "`/myadlink` - View the current ad link.\n"
+        "`/setadlink` - Update your personal advertisement link.\n"
+        "`/myadlink` - View your current ad link.\n"
         "`/cancel` - Cancel the current operation."
     )
 
@@ -402,10 +405,12 @@ async def manual_add_command(_, message: Message):
 
 @bot.on_message(filters.command("setadlink") & filters.private)
 async def set_ad_link_command(_, message: Message):
+    user_id = message.from_user.id
     if len(message.command) > 1 and (message.command[1].startswith("http://") or message.command[1].startswith("https://")):
         new_link = message.command[1]
-        save_ad_link(new_link)
-        await message.reply_text(f"✅ **Ad Link Updated!**\n\nNew Link: `{new_link}`")
+        user_ad_links[user_id] = new_link
+        save_user_ad_links()  # Save changes to the file
+        await message.reply_text(f"✅ **Your Ad Link Updated!**\n\nNew Link: `{new_link}`")
     else:
         await message.reply_text(
             "⚠️ **Usage:** `/setadlink https://your-ad-link.com`\n\n"
@@ -414,7 +419,10 @@ async def set_ad_link_command(_, message: Message):
 
 @bot.on_message(filters.command("myadlink") & filters.private)
 async def my_ad_link_command(_, message: Message):
-    await message.reply_text(f"🔗 **Current Ad Link:**\n`{AD_LINK}`")
+    user_id = message.from_user.id
+    # Get user's link or the default if not set
+    link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
+    await message.reply_text(f"🔗 **Your Current Ad Link:**\n`{link}`")
 
 
 async def process_text_input(client, message: Message):
@@ -449,13 +457,10 @@ async def process_text_input(client, message: Message):
 async def text_handler(client, message: Message):
     await process_text_input(client, message)
 
-# <-- এই ফাংশনটি এখন আর ম্যানুয়াল পোস্টের জন্য ব্যবহৃত হবে না, তাই এটি মুছে ফেলা হয়েছে বা এর কার্যকারিতা সীমিত করা হয়েছে -->
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(client, message: Message):
     user_id = message.from_user.id
     if (convo := user_conversations.get(user_id)):
-        # যদি ভবিষ্যতে অন্য কোনো কারণে ছবি আপলোডের প্রয়োজন হয়, তার জন্য এই হ্যান্ডলার রাখা যেতে পারে।
-        # কিন্তু ম্যানুয়াল ফ্লো এখন আর ছবি সরাসরি গ্রহণ করবে না।
         await message.reply_text("⚠️ Currently, I can only accept poster URLs during manual entry. Please use the `/manual` command and provide a URL when prompted.")
 
 @bot.on_callback_query(filters.regex("^select_"))
@@ -509,7 +514,6 @@ async def language_conversation_handler(client, message: Message):
                [InlineKeyboardButton("❌ No, skip", callback_data=f"addlink_no_{user_id}")]]
     await message.reply_text(f"✅ Language set to **{convo['details']['custom_language']}**.\n\n**🔗 Add Download Links?**", reply_markup=InlineKeyboardMarkup(buttons))
 
-### <-- এখানে পরিবর্তন করা হয়েছে -->
 async def manual_conversation_handler(client, message: Message):
     """Handles the conversation flow for manual content entry."""
     user_id = message.from_user.id
@@ -539,12 +543,10 @@ async def manual_conversation_handler(client, message: Message):
         try:
             rating = 0.0 if text.upper() == "N/A" else round(float(text), 1)
             convo["details"]["vote_average"] = rating
-            # পরের ধাপে পোস্টার URL চাওয়া হবে
             convo["state"] = "manual_wait_poster_url"
             await message.reply_text("✅ Rating set. Finally, send the **Poster Image URL**.")
         except ValueError:
             await message.reply_text("⚠️ Invalid rating. Send a number (e.g., `7.8`) or `N/A`.")
-    # নতুন ধাপ: পোস্টার URL গ্রহণ করা
     elif state == "manual_wait_poster_url":
         if text.startswith("http://") or text.startswith("https://"):
             convo["details"]["manual_poster_url"] = text
@@ -558,7 +560,8 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
     await msg_to_edit.edit_text("⏳ Generating content...")
     caption = generate_formatted_caption(convo["details"])
-    html_code = generate_html(convo["details"], convo["links"])
+    # Pass user_id to generate_html
+    html_code = generate_html(convo["details"], convo["links"], user_id)
     await msg_to_edit.edit_text("🎨 Generating image...")
     image_file = generate_image(convo["details"])
     convo["generated"] = {"caption": caption, "html": html_code, "image": image_file}
@@ -571,7 +574,6 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
     if image_file:
         await client.send_photo(msg_to_edit.chat.id, photo=image_file, caption=caption, reply_markup=InlineKeyboardMarkup(buttons))
     else:
-        # যদি ছবি তৈরি না হয় (যেমন ভুল URL এর কারণে), শুধু ক্যাপশন পাঠানো হবে
         await client.send_message(msg_to_edit.chat.id, "⚠️ **Image could not be generated.**\n\n" + caption, reply_markup=InlineKeyboardMarkup(buttons))
 
 @bot.on_callback_query(filters.regex("^(get_|post_)"))
@@ -640,7 +642,8 @@ async def final_action_callback(client, cb):
 if __name__ == "__main__":
     print("🚀 Starting the bot...")
     
-    load_ad_link()
+    # Load user-specific ad links at startup
+    load_user_ad_links()
     
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
