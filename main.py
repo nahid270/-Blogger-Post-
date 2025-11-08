@@ -117,7 +117,8 @@ def search_tmdb(query: str):
 
 def get_tmdb_details(media_type: str, media_id: int):
     try:
-        details_url = f"https://api.themoviedb.org/3/{media_type}/{media_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos"
+        # 'similar' movies list যুক্ত করা হয়েছে
+        details_url = f"https://api.themoviedb.org/3/{media_type}/{media_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,similar"
         response = requests.get(details_url, timeout=10)
         response.raise_for_status()
         return response.json()
@@ -125,55 +126,53 @@ def get_tmdb_details(media_type: str, media_id: int):
         print(f"Error fetching TMDB details: {e}")
         return None
 
-def upload_to_telegraph(file_obj):
-    """Uploads an image from a file object to telegra.ph and returns the URL."""
-    try:
-        files = {'file': ('photo.jpg', file_obj, 'image/jpeg')}
-        response = requests.post('https://telegra.ph/upload', files=files, timeout=15)
-        if response.status_code != 200:
-            print(f"⚠️ Telegraph upload failed with status code: {response.status_code}")
-            print(f"⚠️ Response content: {response.text}")
-            return None
-        result = response.json()
-        if result and isinstance(result, list) and 'src' in result[0]:
-            image_url = "https://telegra.ph" + result[0]['src']
-            print(f"✅ Image uploaded to Telegraph: {image_url}")
-            return image_url
-        else:
-            print(f"⚠️ Telegraph returned unexpected JSON: {result}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ Network error during Telegraph upload: {e}")
-    except Exception as e:
-        print(f"⚠️ An unexpected error occurred in upload_to_telegraph: {e}")
-    return None
-
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
+    
+    # রানটাইমকে ঘণ্টা ও মিনিটে রূপান্তর
+    runtime_str = "N/A"
+    if runtime_minutes := data.get("runtime"):
+        hours = runtime_minutes // 60
+        minutes = runtime_minutes % 60
+        runtime_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
+        
     rating = f"⭐ {data.get('vote_average', 0):.1f}/10"
     genres = ", ".join([g["name"] for g in data.get("genres", [])] or ["N/A"])
-    overview = data.get("overview", "No plot summary available.")
-    director = next((member["name"] for member in data.get("credits", {}).get("crew", []) if member.get("job") == "Director"), "N/A")
     cast = ", ".join([actor["name"] for actor in data.get("credits", {}).get("cast", [])[:5]] or ["N/A"])
     language = data.get('custom_language', '').title()
-
-    caption_text = f"🎬 **{title} ({year})**\n\n"
-    caption_text += f"**Rating:** {rating}\n"
-    caption_text += f"**Genres:** {genres}\n"
-    if language:
-        caption_text += f"**Language:** {language}\n"
-    if director != "N/A":
-        caption_text += f"**Director:** {director}\n"
-    if cast != "N/A":
-        caption_text += f"**Cast:** {cast}\n\n"
+    overview = data.get("overview", "No plot summary available.")
     
-    caption_text += f"**Plot:** _{overview[:450]}{'...' if len(overview) > 450 else ''}_"
+    similar_movies = data.get("similar", {}).get("results", [])
+    similar_movies_list = [
+        f"» {movie.get('title') or movie.get('name')}" for movie in similar_movies[:4]
+    ]
+
+    # --- চূড়ান্ত ক্যাপশন তৈরি ---
+    caption_text = f"🎬 **{title} ({year})**\n\n"
+    
+    if language:
+        caption_text += f"**🎭 Genres:** {genres}\n"
+        caption_text += f"**🗣️ Language:** {language}\n"
+        caption_text += f"**⏳ Runtime:** {runtime_str}\n"
+        caption_text += f"**⭐ Rating:** {rating}\n\n"
+    else:
+        caption_text += f"**🎭 Genres:** {genres}\n"
+        caption_text += f"**⏳ Runtime:** {runtime_str} | **⭐ Rating:** {rating}\n\n"
+
+    if cast != "N/A":
+        caption_text += f"**👥 Cast:** _{cast}_\n\n"
+
+    caption_text += f"**📝 Plot:** _{overview[:400]}{'...' if len(overview) > 400 else ''}_"
+    
+    if similar_movies_list:
+        caption_text += "\n\n**💡 You Might Also Like:**\n"
+        caption_text += "\n".join(similar_movies_list)
+        
     return caption_text
 
 def generate_html(data: dict, links: list, user_id: int):
-    # Fetch the user-specific ad link, or use the default one
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     
     TIMER_SECONDS = 10
@@ -191,6 +190,31 @@ def generate_html(data: dict, links: list, user_id: int):
     else:
         poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
+    # <-- কাস্ট গ্যালারি তৈরির কোড শুরু -->
+    cast_html = ""
+    cast_members = data.get("credits", {}).get("cast", [])
+    if cast_members:
+        cast_html += '<h3 style="text-align:center; margin-top: 25px;">🎭 Meet the Cast 🎭</h3>'
+        cast_html += '<div class="cast-container">'
+        
+        for member in cast_members[:8]:
+            member_name = member.get("name")
+            profile_path = member.get("profile_path")
+            
+            if profile_path:
+                member_image_url = f"https://image.tmdb.org/t/p/w185{profile_path}"
+            else:
+                member_image_url = "https://via.placeholder.com/185x278.png?text=No+Image"
+
+            cast_html += f"""
+            <div class="cast-member">
+                <img src="{member_image_url}" alt="{member_name}" class="cast-photo">
+                <p class="cast-name">{member_name}</p>
+            </div>
+            """
+        cast_html += '</div>'
+    # <-- কাস্ট গ্যালারি তৈরির কোড শেষ -->
+
     download_blocks_html = ""
     if not links:
         download_blocks_html = "<p>No download links available.</p>"
@@ -206,16 +230,19 @@ def generate_html(data: dict, links: list, user_id: int):
 
     final_html = f"""
 <!-- Bot Generated Content Starts -->
-<!-- Movie Info -->
 <div style="text-align: center;">
     <img src="{poster_url}" alt="{title} Poster" style="max-width: 280px; border-radius: 8px; margin-bottom: 15px;">
     <h2>{title} ({year}) - {language}</h2>
     <p style="text-align: left; padding: 0 10px;">{overview}</p>
 </div>
 <!--more-->
-<!-- Download System with Notification -->
+{cast_html}
 <div class="dl-body" style="font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center;">
     <style>
+        .cast-container {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 20px; padding: 10px; }}
+        .cast-member {{ text-align: center; width: 100px; }}
+        .cast-photo {{ width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+        .cast-name {{ font-size: 13px; font-weight: 500; color: #333; margin-top: 8px; }}
         .dl-main-content {{ width: 100%; max-width: 500px; margin: auto; }}
         .dl-post-container {{ background: #ffffff; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); border: 1px solid #e7eaf3; }}
         .dl-instruction-box {{ background-color: #fffbe6; border: 1px solid #ffe58f; color: #333; padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: center; }}
@@ -229,22 +256,15 @@ def generate_html(data: dict, links: list, user_id: int):
         .dl-timer-display {{ margin-top: 10px; font-size: 18px; font-weight: bold; color: #d32f2f; background: #f0f0f0; padding: 12px; border-radius: 10px; text-align: center; display: none; }}
         .dl-download-count-text {{ margin-top: 20px; font-size: 15px; color: #555; text-align: center; }}
     </style>
-    
-    <!-- Main Download Box -->
     <div class="dl-main-content">
         <div class="dl-post-container">
-            
-            <!-- Download Instructions Box -->
             <div class="dl-instruction-box">
                 <h2>🎬 ডাউনলোড করার নিয়মাবলী</h2>
                 <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
                 <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
                 <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
             </div>
-
-            <!-- Download Blocks (Dynamically generated) -->
             {download_blocks_html}
-            
             <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
             <a class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank" rel="noopener noreferrer">💋 Join Telegram Channel</a>
         </div>
@@ -253,7 +273,6 @@ def generate_html(data: dict, links: list, user_id: int):
     document.addEventListener('DOMContentLoaded', function() {{
         const AD_LINK = "{ad_link}";
         const TIMER_SECONDS = {TIMER_SECONDS};
-        
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
                 let clickCount = parseInt(button.dataset.clickCount);
@@ -261,7 +280,6 @@ def generate_html(data: dict, links: list, user_id: int):
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
                 const downloadUrl = button.dataset.url;
-
                 if (clickCount === 0) {{
                     window.open(AD_LINK, "_blank");
                     button.innerText = "Click Again to Start Timer";
@@ -269,9 +287,7 @@ def generate_html(data: dict, links: list, user_id: int):
                 }} else if (clickCount === 1) {{
                     button.style.display = 'none';
                     timerDisplay.style.display = 'block';
-                    
                     realDownloadLink.href = downloadUrl;
-                    
                     let timeLeft = TIMER_SECONDS;
                     timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
                     const timer = setInterval(() => {{
@@ -281,12 +297,8 @@ def generate_html(data: dict, links: list, user_id: int):
                             clearInterval(timer);
                             timerDisplay.style.display = 'none';
                             realDownloadLink.style.display = 'block';
-                            // ---- THIS IS THE NEW COUNTER LOGIC ----
                             const counter = document.getElementById('download-counter');
-                            if(counter) {{
-                                counter.innerText = parseInt(counter.innerText) + 1;
-                            }}
-                            // ------------------------------------------
+                            if(counter) {{ counter.innerText = parseInt(counter.innerText) + 1; }}
                         }}
                     }}, 1000);
                     button.dataset.clickCount = 2;
@@ -301,24 +313,20 @@ def generate_html(data: dict, links: list, user_id: int):
     return final_html
 
 def generate_image(data: dict):
-    """Generates the final image with movie/series details."""
     try:
         poster_bytes = None
         if data.get("manual_poster_url"):
             try:
                 poster_response = requests.get(data["manual_poster_url"], timeout=15)
-                if poster_response.ok:
-                    poster_bytes = poster_response.content
+                if poster_response.ok: poster_bytes = poster_response.content
             except requests.exceptions.RequestException as e:
                 print(f"⚠️ Could not download manual poster from URL: {e}")
         elif data.get('poster_path'):
             poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
             poster_response = requests.get(poster_url)
-            if poster_response.ok:
-                poster_bytes = poster_response.content
+            if poster_response.ok: poster_bytes = poster_response.content
         
-        if not poster_bytes: 
-            return None
+        if not poster_bytes: return None
 
         poster_img = Image.open(io.BytesIO(poster_bytes)).convert("RGBA").resize((400, 600))
         bg_img = Image.new('RGBA', (1280, 720), (10, 10, 20))
@@ -409,23 +417,19 @@ async def set_ad_link_command(_, message: Message):
     if len(message.command) > 1 and (message.command[1].startswith("http://") or message.command[1].startswith("https://")):
         new_link = message.command[1]
         user_ad_links[user_id] = new_link
-        save_user_ad_links()  # Save changes to the file
+        save_user_ad_links()
         await message.reply_text(f"✅ **Your Ad Link Updated!**\n\nNew Link: `{new_link}`")
     else:
-        await message.reply_text(
-            "⚠️ **Usage:** `/setadlink https://your-ad-link.com`\n\n"
-            "Please provide a valid URL."
-        )
+        await message.reply_text("⚠️ **Usage:** `/setadlink https://your-ad-link.com`")
 
 @bot.on_message(filters.command("myadlink") & filters.private)
 async def my_ad_link_command(_, message: Message):
     user_id = message.from_user.id
-    # Get user's link or the default if not set
     link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     await message.reply_text(f"🔗 **Your Current Ad Link:**\n`{link}`")
 
-
-async def process_text_input(client, message: Message):
+@bot.on_message(filters.text & filters.private & ~filters.command())
+async def text_handler(client, message: Message):
     user_id = message.from_user.id
     text = message.text.strip()
     if convo := user_conversations.get(user_id):
@@ -439,12 +443,11 @@ async def process_text_input(client, message: Message):
                 "wait_link_label": link_conversation_handler, "wait_link_url": link_conversation_handler
             }
             if handler := handlers.get(state):
-                await handler(client, message)
-                return
+                return await handler(client, message)
     processing_msg = await message.reply_text("🔍 Searching...")
     results = search_tmdb(text)
     if not results:
-        await processing_msg.edit_text("❌ No content found. Try a more specific name (e.g., `Movie Name 2023`) or use `/manual`."); return
+        return await processing_msg.edit_text("❌ No content found. Try a more specific name (e.g., `Movie Name 2023`) or use `/manual`.")
     buttons = []
     for r in results:
         title = r.get('title') or r.get('name')
@@ -453,23 +456,18 @@ async def process_text_input(client, message: Message):
         buttons.append([InlineKeyboardButton(f"{icon} {title} ({year})", callback_data=f"select_{r['media_type']}_{r['id']}")])
     await processing_msg.edit_text("**👇 Choose the correct one:**", reply_markup=InlineKeyboardMarkup(buttons))
 
-@bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual", "setadlink", "myadlink"]))
-async def text_handler(client, message: Message):
-    await process_text_input(client, message)
-
 @bot.on_message(filters.photo & filters.private)
-async def photo_handler(client, message: Message):
-    user_id = message.from_user.id
-    if (convo := user_conversations.get(user_id)):
+async def photo_handler(_, message: Message):
+    if message.from_user.id in user_conversations:
         await message.reply_text("⚠️ Currently, I can only accept poster URLs during manual entry. Please use the `/manual` command and provide a URL when prompted.")
 
 @bot.on_callback_query(filters.regex("^select_"))
-async def selection_callback(client, cb):
+async def selection_callback(_, cb):
     await cb.answer("Fetching details...", show_alert=False)
     _, media_type, media_id = cb.data.split("_")
     details = get_tmdb_details(media_type, int(media_id))
     if not details:
-        await cb.message.edit_text("❌ Failed to get details. Please try again."); return
+        return await cb.message.edit_text("❌ Failed to get details. Please try again.")
     user_id = cb.from_user.id
     user_conversations[user_id] = {"details": details, "links": [], "state": "wait_custom_language"}
     await cb.message.edit_text("✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`, `English`, `Dual Audio`).")
@@ -487,7 +485,7 @@ async def add_link_callback(client, cb):
         await cb.message.edit_text("✅ No links will be added. Generating final content...")
         await generate_final_content(client, user_id, cb.message)
 
-async def link_conversation_handler(client, message: Message):
+async def link_conversation_handler(_, message: Message):
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     text = message.text.strip()
@@ -505,7 +503,7 @@ async def link_conversation_handler(client, message: Message):
                    [InlineKeyboardButton("✅ Done, Generate Post", callback_data=f"addlink_no_{user_id}")]]
         await message.reply_text("✅ Link added! Add another?", reply_markup=InlineKeyboardMarkup(buttons))
 
-async def language_conversation_handler(client, message: Message):
+async def language_conversation_handler(_, message: Message):
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     convo["details"]["custom_language"] = message.text.strip()
@@ -514,8 +512,7 @@ async def language_conversation_handler(client, message: Message):
                [InlineKeyboardButton("❌ No, skip", callback_data=f"addlink_no_{user_id}")]]
     await message.reply_text(f"✅ Language set to **{convo['details']['custom_language']}**.\n\n**🔗 Add Download Links?**", reply_markup=InlineKeyboardMarkup(buttons))
 
-async def manual_conversation_handler(client, message: Message):
-    """Handles the conversation flow for manual content entry."""
+async def manual_conversation_handler(_, message: Message):
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     text = message.text.strip()
@@ -529,8 +526,7 @@ async def manual_conversation_handler(client, message: Message):
             convo["details"]["release_date"] = f"{text}-01-01"
             convo["state"] = "manual_wait_overview"
             await message.reply_text("✅ Year set. Now send the **Plot/Overview**.")
-        else:
-            await message.reply_text("⚠️ Invalid. Please send a 4-digit year.")
+        else: await message.reply_text("⚠️ Invalid. Please send a 4-digit year.")
     elif state == "manual_wait_overview":
         convo["details"]["overview"] = text
         convo["state"] = "manual_wait_genres"
@@ -541,26 +537,21 @@ async def manual_conversation_handler(client, message: Message):
         await message.reply_text("✅ Genres set. What's the **Rating**? (e.g., `8.5`). Send `N/A` if none.")
     elif state == "manual_wait_rating":
         try:
-            rating = 0.0 if text.upper() == "N/A" else round(float(text), 1)
-            convo["details"]["vote_average"] = rating
+            convo["details"]["vote_average"] = 0.0 if text.upper() == "N/A" else round(float(text), 1)
             convo["state"] = "manual_wait_poster_url"
             await message.reply_text("✅ Rating set. Finally, send the **Poster Image URL**.")
-        except ValueError:
-            await message.reply_text("⚠️ Invalid rating. Send a number (e.g., `7.8`) or `N/A`.")
+        except ValueError: await message.reply_text("⚠️ Invalid rating. Send a number (e.g., `7.8`) or `N/A`.")
     elif state == "manual_wait_poster_url":
         if text.startswith("http://") or text.startswith("https://"):
             convo["details"]["manual_poster_url"] = text
             convo["state"] = "wait_custom_language"
-            await message.reply_text(f"✅ Poster URL set!\n\n**🗣️ Now, enter the language for this post** (e.g., `Bengali Dubbed`, `Hindi`, `Dual Audio`).")
-        else:
-            await message.reply_text("⚠️ Invalid URL. Please send a valid link starting with `http://` or `https://`.")
-
+            await message.reply_text(f"✅ Poster URL set!\n\n**🗣️ Now, enter the language for this post** (e.g., `Bengali Dubbed`).")
+        else: await message.reply_text("⚠️ Invalid URL. Please send a valid link.")
 
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
     await msg_to_edit.edit_text("⏳ Generating content...")
     caption = generate_formatted_caption(convo["details"])
-    # Pass user_id to generate_html
     html_code = generate_html(convo["details"], convo["links"], user_id)
     await msg_to_edit.edit_text("🎨 Generating image...")
     image_file = generate_image(convo["details"])
@@ -581,11 +572,9 @@ async def final_action_callback(client, cb):
     try:
         action, user_id_str = cb.data.rsplit("_", 1)
         user_id = int(user_id_str)
-    except (ValueError, IndexError):
-        return await cb.answer("Error: Invalid callback data.", show_alert=True)
+    except (ValueError, IndexError): return await cb.answer("Error: Invalid callback data.", show_alert=True)
     
-    if cb.from_user.id != user_id:
-        return await cb.answer("This button is not for you!", show_alert=True)
+    if cb.from_user.id != user_id: return await cb.answer("This button is not for you!", show_alert=True)
     if not (convo := user_conversations.get(user_id)) or "generated" not in convo:
         return await cb.answer("Session expired. Please start over.", show_alert=True)
     
@@ -597,24 +586,15 @@ async def final_action_callback(client, cb):
         try:
             response = requests.post("https://dpaste.com/api/", data={"content": html_code, "syntax": "html"})
             response.raise_for_status()
-            paste_url = response.text.strip()
             await cb.message.reply_text(
-                "✅ **আপনার ব্লগার কোড প্রস্তুত!**\n\n"
-                "নিচের বাটনে ক্লিক করে ব্রাউজারে খুলুন এবং সম্পূর্ণ কোডটি একবারে কপি করে নিন।",
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔗 কোড কপি করতে এখানে ক্লিক করুন", url=paste_url)]]
-                )
+                "✅ **আপনার ব্লগার কোড প্রস্তুত!**",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 কোড কপি করতে এখানে ক্লিক করুন", url=response.text.strip())]])
             )
         except requests.exceptions.RequestException as e:
             print(f"Error creating paste link: {e}")
-            await cb.message.reply_text(
-                "⚠️ **দুঃখিত!**\n"
-                "কোডটির জন্য অনলাইন লিংক তৈরি করা সম্ভব হয়নি।\n\n"
-                "**বিকল্প হিসেবে, সম্পূর্ণ কোডটি একটি ফাইল (`.html`) হিসেবে পাঠানো হলো।**",
-            )
-            title = (convo["details"].get("title") or "post").replace(" ", "_")
+            await cb.message.reply_text("⚠️ **দুঃখিত!** কোডটির জন্য লিংক তৈরি করা সম্ভব হয়নি। ফাইল হিসেবে পাঠানো হলো।")
             file_bytes = io.BytesIO(html_code.encode('utf-8'))
-            file_bytes.name = f"{title}.html"
+            file_bytes.name = f"{(convo['details'].get('title') or 'post').replace(' ', '_')}.html"
             await client.send_document(cb.message.chat.id, document=file_bytes)
 
     elif action == "get_caption":
@@ -641,14 +621,9 @@ async def final_action_callback(client, cb):
 # ---- MAIN EXECUTION ----
 if __name__ == "__main__":
     print("🚀 Starting the bot...")
-    
-    # Load user-specific ad links at startup
     load_user_ad_links()
-    
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    
     bot.run()
-    
     print("👋 Bot has stopped.")
