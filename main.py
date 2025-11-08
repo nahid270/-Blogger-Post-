@@ -117,7 +117,6 @@ def search_tmdb(query: str):
 
 def get_tmdb_details(media_type: str, media_id: int):
     try:
-        # 'similar' movies list যুক্ত করা হয়েছে
         details_url = f"https://api.themoviedb.org/3/{media_type}/{media_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,similar"
         response = requests.get(details_url, timeout=10)
         response.raise_for_status()
@@ -131,7 +130,6 @@ def generate_formatted_caption(data: dict):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     
-    # রানটাইমকে ঘণ্টা ও মিনিটে রূপান্তর
     runtime_str = "N/A"
     if runtime_minutes := data.get("runtime"):
         hours = runtime_minutes // 60
@@ -149,7 +147,6 @@ def generate_formatted_caption(data: dict):
         f"» {movie.get('title') or movie.get('name')}" for movie in similar_movies[:4]
     ]
 
-    # --- চূড়ান্ত ক্যাপশন তৈরি ---
     caption_text = f"🎬 **{title} ({year})**\n\n"
     
     if language:
@@ -167,8 +164,7 @@ def generate_formatted_caption(data: dict):
     caption_text += f"**📝 Plot:** _{overview[:400]}{'...' if len(overview) > 400 else ''}_"
     
     if similar_movies_list:
-        caption_text += "\n\n**💡 You Might Also Like:**\n"
-        caption_text += "\n".join(similar_movies_list)
+        caption_text += "\n\n**💡 You Might Also Like:**\n" + "\n".join(similar_movies_list)
         
     return caption_text
 
@@ -190,7 +186,6 @@ def generate_html(data: dict, links: list, user_id: int):
     else:
         poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
-    # <-- কাস্ট গ্যালারি তৈরির কোড শুরু -->
     cast_html = ""
     cast_members = data.get("credits", {}).get("cast", [])
     if cast_members:
@@ -213,7 +208,6 @@ def generate_html(data: dict, links: list, user_id: int):
             </div>
             """
         cast_html += '</div>'
-    # <-- কাস্ট গ্যালারি তৈরির কোড শেষ -->
 
     download_blocks_html = ""
     if not links:
@@ -428,7 +422,8 @@ async def my_ad_link_command(_, message: Message):
     link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     await message.reply_text(f"🔗 **Your Current Ad Link:**\n`{link}`")
 
-@bot.on_message(filters.text & filters.private & ~filters.command())
+# ----- THIS IS THE CORRECTED LINE -----
+@bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual", "setadlink", "myadlink"]))
 async def text_handler(client, message: Message):
     user_id = message.from_user.id
     text = message.text.strip()
@@ -574,7 +569,7 @@ async def final_action_callback(client, cb):
         user_id = int(user_id_str)
     except (ValueError, IndexError): return await cb.answer("Error: Invalid callback data.", show_alert=True)
     
-    if cb.from_user.id != user_id: return await cb.answer("This button is not for you!", show_alert=True)
+    if cb.from_user.id != user_id: return await cb.answer("This is not for you!", show_alert=True)
     if not (convo := user_conversations.get(user_id)) or "generated" not in convo:
         return await cb.answer("Session expired. Please start over.", show_alert=True)
     
