@@ -381,12 +381,13 @@ def generate_image(data: dict):
 
 # ---- BOT HANDLERS ----
 @bot.on_message(filters.command("start") & filters.private)
-async def start_command(_, message: Message):
+async def start_command(client, message: Message):
     user_conversations.pop(message.from_user.id, None)
+    bot_username = (await client.get_me()).username
     await message.reply_text(
         "👋 **Welcome to the Movie & Series Bot!**\n\n"
-        "To get started, go to any chat, type my username (`@your_bot_username`) and then a movie name.\n"
-        "Example: `@your_bot_username Inception`\n\n"
+        "To get started, go to any chat, type my username (`@" + bot_username + "`) and then a movie name.\n"
+        "Example: `@" + bot_username + " Inception`\n\n"
         "**Available Commands:**\n"
         "`/setchannel` - Set your channel for posting.\n"
         "`/manual` - Add content details manually.\n"
@@ -494,7 +495,7 @@ async def details_command_handler(client, message: Message):
 
 
 # ---- Conversation handlers (for links, language, manual entry) ----
-@bot.on_message(filters.text & filters.private & ~filters.command())
+@bot.on_message(filters.text & filters.private & ~filters.command)
 async def conversation_text_handler(client, message: Message):
     user_id = message.from_user.id
     if convo := user_conversations.get(user_id):
@@ -514,10 +515,11 @@ async def conversation_text_handler(client, message: Message):
                 await message.reply_text("I'm waiting for a specific input. Use /cancel to restart.")
     else:
         # This message is shown if the user just types text without a command or active conversation
+        bot_username = (await client.get_me()).username
         await message.reply_text(
             "Please use the inline search to find content.\n"
             "Go to any chat, type my username, and then a movie name.\n\n"
-            "Example: `@your_bot_username The Matrix`"
+            "Example: `@" + bot_username + " The Matrix`"
         )
 
 
