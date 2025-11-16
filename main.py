@@ -51,7 +51,7 @@ USER_AD_LINKS_FILE = "user_ad_links.json"
 DEFAULT_AD_LINK = "https://www.effectivegatecpm.com/tcv8t3ez?key=963db7dfa28636112ea21bcca599d8fc"
 user_ad_links = {}
 
-# --- NEW: CHANNEL POST CONFIGURATION ---
+# --- CHANNEL POST CONFIGURATION ---
 USER_PROMO_CONFIG_FILE = "user_promo_config.json"
 user_promo_config = {} # Stores format: {user_id: {"channel": "@channel", "name": "CineZoneBD", "watch_link": "...", "download_link": "...", "request_link": "..."}}
 
@@ -107,6 +107,7 @@ except Exception as e:
     sys.exit(1)
 
 # ---- FONT CONFIGURATION ----
+# NOTE: Make sure to upload 'Poppins-Bold.ttf' and 'Poppins-Regular.ttf' with your bot.
 try:
     FONT_BOLD = ImageFont.truetype("Poppins-Bold.ttf", 32)
     FONT_REGULAR = ImageFont.truetype("Poppins-Regular.ttf", 24)
@@ -439,7 +440,7 @@ async def poster_command(client, message: Message):
     if poster_path:
         portrait_url = f"https://image.tmdb.org/t/p/original{poster_path}"
         try:
-            await client.send_photo(chat_id=message.chat.id, photo=portrait_url, caption=f"✅ **{title} ({year})**\nPortrait Poster (লম্বালম্বি)")
+            await client.send_photo(chat_id=message.chat.id, photo=portrait_url, caption=f"✅ **{title} ({year})**\nPortrait Poster")
             sent_any = True
         except Exception as e:
             logger.error(f"Failed to send portrait poster: {e}")
@@ -447,7 +448,7 @@ async def poster_command(client, message: Message):
     if backdrop_path:
         landscape_url = f"https://image.tmdb.org/t/p/original{backdrop_path}"
         try:
-            await client.send_photo(chat_id=message.chat.id, photo=landscape_url, caption=f"✅ **{title} ({year})**\nLandscape Poster (চ্যাপ্টা)")
+            await client.send_photo(chat_id=message.chat.id, photo=landscape_url, caption=f"✅ **{title} ({year})**\nLandscape Poster")
             sent_any = True
         except Exception as e:
             logger.error(f"Failed to send landscape poster: {e}")
@@ -487,7 +488,7 @@ async def set_ad_link_command(_, message: Message):
     else:
         await message.reply_text("⚠️ **Usage:** `/setadlink https://your-ad-link.com`")
 
-# ---- NEW: CHANNEL POST CONFIGURATION COMMANDS ----
+# ---- CHANNEL POST CONFIGURATION COMMANDS ----
 def get_user_promo_config(user_id: int):
     if user_id not in user_promo_config:
         user_promo_config[user_id] = {}
@@ -591,7 +592,16 @@ async def details_command_handler(client, message: Message):
     await processing_msg.edit_text("✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`).")
 
 # ---- CONVERSATION HANDLERS ----
-@bot.on_message(filters.text & filters.private & ~filters.command())
+# ############## MAIN ERROR FIX ##############
+# The TypeError was fixed here by providing a list of all commands to the filter.
+@bot.on_message(
+    filters.text & 
+    filters.private & 
+    ~filters.command([
+        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details",
+        "setpromochannel", "setpromoname", "setwatchlink", "setdownloadlink", "setrequestlink"
+    ])
+)
 async def conversation_text_handler(client, message: Message):
     user_id = message.from_user.id
     if convo := user_conversations.get(user_id):
@@ -709,7 +719,7 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
     # --- Get HD Image from generated content (No Blurring) ---
     channel_post_image = convo.get("generated", {}).get("image")
     if channel_post_image:
-        channel_post_image.seek(0) # Reset buffer to the beginning before sending
+        channel_post_image.seek(0)
 
     title = details.get("title") or details.get("name") or "New Content"
     caption = (
