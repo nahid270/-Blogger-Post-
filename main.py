@@ -87,12 +87,14 @@ try:
     FONT_REGULAR = ImageFont.truetype("Poppins-Regular.ttf", 24)
     FONT_SMALL = ImageFont.truetype("Poppins-Regular.ttf", 18)
     FONT_BADGE = ImageFont.truetype("Poppins-Bold.ttf", 22)
+    FONT_SEARCH_BADGE = ImageFont.truetype("Poppins-Bold.ttf", 24)
 except IOError:
     print("⚠️ Warning: Poppins font files not found. Image generation will use default fonts.")
     FONT_BOLD = ImageFont.load_default()
     FONT_REGULAR = ImageFont.load_default()
     FONT_SMALL = ImageFont.load_default()
     FONT_BADGE = ImageFont.load_default()
+    FONT_SEARCH_BADGE = ImageFont.load_default()
 
 # ---- TMDB API FUNCTIONS ----
 def search_tmdb(query: str):
@@ -126,6 +128,61 @@ def get_tmdb_details(media_type: str, media_id: int):
         return None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
+
+def create_search_results_image(results: list):
+    """Creates a single collage image from a list of TMDB search results."""
+    if not results:
+        return None
+    
+    poster_width, poster_height = 180, 270
+    padding = 15
+    cols = len(results)
+    total_width = (poster_width + padding) * cols + padding
+    total_height = poster_height + 2 * padding
+    
+    collage = Image.new('RGB', (total_width, total_height), (20, 20, 30))
+    draw = ImageDraw.Draw(collage)
+    
+    for i, result in enumerate(results):
+        poster_path = result.get('poster_path')
+        poster_img = None
+        if poster_path:
+            try:
+                poster_url = f"https://image.tmdb.org/t/p/w200{poster_path}"
+                response = requests.get(poster_url, timeout=5)
+                if response.ok:
+                    poster_img = Image.open(io.BytesIO(response.content)).resize((poster_width, poster_height))
+            except requests.exceptions.RequestException as e:
+                print(f"Could not download poster for search result: {e}")
+
+        x_offset = padding + i * (poster_width + padding)
+        y_offset = padding
+
+        if poster_img:
+            collage.paste(poster_img, (x_offset, y_offset))
+        else:
+            placeholder_rect = [x_offset, y_offset, x_offset + poster_width, y_offset + poster_height]
+            draw.rectangle(placeholder_rect, fill=(50, 50, 60))
+            draw.text((x_offset + 60, y_offset + 120), "N/A", fill="white", font=FONT_SEARCH_BADGE)
+
+        badge_size = 30
+        badge_x, badge_y = x_offset + 5, y_offset + 5
+        draw.ellipse((badge_x, badge_y, badge_x + badge_size, badge_y + badge_size), fill=(220, 20, 60, 220))
+        
+        number_str = str(i + 1)
+        text_bbox = draw.textbbox((0, 0), number_str, font=FONT_SEARCH_BADGE)
+        text_w = text_bbox[2] - text_bbox[0]
+        text_h = text_bbox[3] - text_bbox[1]
+        text_x = badge_x + (badge_size - text_w) / 2
+        text_y = badge_y + (badge_size - text_h) / 2
+        draw.text((text_x, text_y - 2), number_str, font=FONT_SEARCH_BADGE, fill="white")
+
+    img_buffer = io.BytesIO()
+    img_buffer.name = "search_results.png"
+    collage.save(img_buffer, format="PNG")
+    img_buffer.seek(0)
+    return img_buffer
+
 def generate_formatted_caption(data: dict):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
@@ -422,7 +479,7 @@ async def my_ad_link_command(_, message: Message):
     link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     await message.reply_text(f"🔗 **Your Current Ad Link:**\n`{link}`")
 
-# ----- THIS IS THE CORRECTED LINE -----
+# ----- THIS IS THE CORRECTED AND MODIFIED TEXT HANDLER -----
 @bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual", "setadlink", "myadlink"]))
 async def text_handler(client, message: Message):
     user_id = message.from_user.id
@@ -439,17 +496,41 @@ async def text_handler(client, message: Message):
             }
             if handler := handlers.get(state):
                 return await handler(client, message)
+
     processing_msg = await message.reply_text("🔍 Searching...")
     results = search_tmdb(text)
     if not results:
         return await processing_msg.edit_text("❌ No content found. Try a more specific name (e.g., `Movie Name 2023`) or use `/manual`.")
+
+    await processing_msg.edit_text("🎨 Generating visual search results...")
+
+    # Generate the collage image of search results
+    results_image = create_search_results_image(results)
+
     buttons = []
-    for r in results:
+    for i, r in enumerate(results):
         title = r.get('title') or r.get('name')
         year = (r.get('release_date') or r.get('first_air_date') or '----').split('-')[0]
         icon = '🎬' if r['media_type'] == 'movie' else '📺'
-        buttons.append([InlineKeyboardButton(f"{icon} {title} ({year})", callback_data=f"select_{r['media_type']}_{r['id']}")])
-    await processing_msg.edit_text("**👇 Choose the correct one:**", reply_markup=InlineKeyboardMarkup(buttons))
+        button_text = f"{i + 1}. {title} ({year}) {icon}"
+        callback_data = f"select_{r['media_type']}_{r['id']}"
+        buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+    await processing_msg.delete()
+
+    if results_image:
+        await client.send_photo(
+            chat_id=message.chat.id,
+            photo=results_image,
+            caption="**👇 Choose the correct one from the list below:**",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    else:
+        # Fallback to text-based selection if image generation fails
+        await message.reply_text(
+            "⚠️ Image generation failed. Using text-based selection.\n\n**👇 Choose the correct one:**",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
 
 @bot.on_message(filters.photo & filters.private)
 async def photo_handler(_, message: Message):
@@ -458,6 +539,7 @@ async def photo_handler(_, message: Message):
 
 @bot.on_callback_query(filters.regex("^select_"))
 async def selection_callback(_, cb):
+    await cb.message.delete() # Deletes the search result photo and buttons
     await cb.answer("Fetching details...", show_alert=False)
     _, media_type, media_id = cb.data.split("_")
     details = get_tmdb_details(media_type, int(media_id))
@@ -465,7 +547,8 @@ async def selection_callback(_, cb):
         return await cb.message.edit_text("❌ Failed to get details. Please try again.")
     user_id = cb.from_user.id
     user_conversations[user_id] = {"details": details, "links": [], "state": "wait_custom_language"}
-    await cb.message.edit_text("✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`, `English`, `Dual Audio`).")
+    # Send message in the chat since the original was deleted
+    await bot.send_message(cb.message.chat.id, "✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`, `English`, `Dual Audio`).")
 
 @bot.on_callback_query(filters.regex("^addlink_"))
 async def add_link_callback(client, cb):
