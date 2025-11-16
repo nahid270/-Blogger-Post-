@@ -112,14 +112,12 @@ try:
     FONT_REGULAR = ImageFont.truetype("Poppins-Regular.ttf", 24)
     FONT_SMALL = ImageFont.truetype("Poppins-Regular.ttf", 18)
     FONT_BADGE = ImageFont.truetype("Poppins-Bold.ttf", 22)
-    FONT_CROSS = ImageFont.truetype("Poppins-Bold.ttf", 40)
 except IOError:
     logger.warning("⚠️ Poppins font files not found. Using default fonts.")
-    FONT_BOLD, FONT_REGULAR, FONT_SMALL, FONT_BADGE, FONT_CROSS = (ImageFont.load_default(),)*5
+    FONT_BOLD, FONT_REGULAR, FONT_SMALL, FONT_BADGE = (ImageFont.load_default(),)*4
 
 # ---- TMDB API FUNCTIONS ----
 def search_tmdb(query: str):
-    # ... (This function remains unchanged)
     year = None
     match = re.search(r'(.+?)\s*\(?(\d{4})\)?$', query)
     if match:
@@ -140,7 +138,6 @@ def search_tmdb(query: str):
         return []
 
 def get_tmdb_details(media_type: str, media_id: int):
-    # ... (This function remains unchanged)
     try:
         details_url = f"https://api.themoviedb.org/3/{media_type}/{media_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,similar"
         response = requests.get(details_url, timeout=10)
@@ -152,7 +149,6 @@ def get_tmdb_details(media_type: str, media_id: int):
 
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
-    # ... (This function remains unchanged)
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     
@@ -195,7 +191,6 @@ def generate_formatted_caption(data: dict):
     return caption_text
 
 def generate_html(data: dict, links: list, user_id: int):
-    # ... (This function remains unchanged)
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     
     TIMER_SECONDS = 10
@@ -334,7 +329,6 @@ def generate_html(data: dict, links: list, user_id: int):
     return final_html
 
 def generate_image(data: dict):
-    # ... (This function remains unchanged)
     try:
         poster_bytes = None
         if data.get("manual_poster_url"):
@@ -399,7 +393,6 @@ def generate_image(data: dict):
 # ---- BOT HANDLERS ----
 @bot.on_message(filters.command("start") & filters.private)
 async def start_command(client, message: Message):
-    # ... (This function remains unchanged)
     user_conversations.pop(message.from_user.id, None)
     bot_username = (await client.get_me()).username
     await message.reply_text(
@@ -421,7 +414,6 @@ async def start_command(client, message: Message):
 
 @bot.on_message(filters.command("poster") & filters.private)
 async def poster_command(client, message: Message):
-    # ... (This function remains unchanged)
     if len(message.command) < 2:
         await message.reply_text("⚠️ **ব্যবহার:** `/poster <movie or series name>`")
         return
@@ -560,7 +552,6 @@ async def set_request_link_command(_, message: Message):
 # ---- INLINE & DETAILS HANDLERS ----
 @bot.on_inline_query()
 async def inline_query_handler(client, query: InlineQuery):
-    # ... (This function remains unchanged)
     search_query = query.query.strip()
     if not search_query:
         await query.answer(results=[], switch_pm_text="Type a movie/series name...", switch_pm_parameter="start", cache_time=0)
@@ -584,7 +575,6 @@ async def inline_query_handler(client, query: InlineQuery):
 
 @bot.on_message(filters.command("details") & filters.private)
 async def details_command_handler(client, message: Message):
-    # ... (This function remains unchanged)
     try:
         _, data = message.text.split(" ", 1)
         media_type, media_id = data.split("_")
@@ -637,7 +627,6 @@ async def add_link_callback(client, cb):
         await generate_final_content(client, user_id, cb.message)
 
 async def link_conversation_handler(_, message: Message):
-    # ... (This function remains unchanged)
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     text = message.text.strip()
@@ -665,7 +654,6 @@ async def language_conversation_handler(_, message: Message):
     await message.reply_text(f"✅ Language set.\n\n**🔗 Add Download Links for Blogger?**", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def manual_conversation_handler(_, message: Message):
-    # ... (This function remains unchanged)
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     text = message.text.strip()
@@ -718,26 +706,10 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
     details = convo["details"]
     language = details.get('custom_language', 'N/A').title()
 
-    blurred_image_buffer = None
-    if image_bytes := convo.get("generated", {}).get("image"):
-        try:
-            image_bytes.seek(0)
-            img = Image.open(image_bytes).convert("RGBA")
-            blurred_img = img.filter(ImageFilter.GaussianBlur(15))
-            
-            draw = ImageDraw.Draw(blurred_img)
-            img_width, img_height = blurred_img.size
-            circle_center = (img_width // 2, img_height // 2)
-            circle_radius = 40
-            draw.ellipse(((circle_center[0]-circle_radius, circle_center[1]-circle_radius), 
-                          (circle_center[0]+circle_radius, circle_center[1]+circle_radius)), fill=(0, 0, 0, 180))
-            draw.text(circle_center, "✕", font=FONT_CROSS, anchor="mm", fill="white")
-
-            blurred_image_buffer = io.BytesIO()
-            blurred_img.save(blurred_image_buffer, format="JPEG")
-            blurred_image_buffer.seek(0)
-        except Exception as e:
-            logger.error(f"Error creating blurred image for channel post: {e}")
+    # --- Get HD Image from generated content (No Blurring) ---
+    channel_post_image = convo.get("generated", {}).get("image")
+    if channel_post_image:
+        channel_post_image.seek(0) # Reset buffer to the beginning before sending
 
     title = details.get("title") or details.get("name") or "New Content"
     caption = (
@@ -756,8 +728,8 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
 
     try:
         channel_id = promo_config["channel"]
-        if blurred_image_buffer:
-            await client.send_photo(channel_id, photo=blurred_image_buffer, caption=caption, reply_markup=buttons)
+        if channel_post_image:
+            await client.send_photo(channel_id, photo=channel_post_image, caption=caption, reply_markup=buttons)
         else:
             await client.send_message(channel_id, text=caption, reply_markup=buttons)
         await client.send_message(confirmation_chat_id, f"✅ Auto-post sent to `{channel_id}`!")
@@ -794,13 +766,8 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
     await msg_to_edit.message.reply_text("⏳ Sending automatic post to channel...")
     await send_channel_post(client, user_id, msg_to_edit.chat.id)
 
-    # Clean up conversation only after everything is done.
-    # Note: Buttons on the main post might not work if session is deleted too early.
-    # For now, this is acceptable as the primary goal is auto-posting.
-
 @bot.on_callback_query(filters.regex("^(get_|post_)"))
 async def final_action_callback(client, cb):
-    # ... (This function remains largely unchanged)
     try:
         action, user_id_str = cb.data.rsplit("_", 1)
         user_id = int(user_id_str)
@@ -848,7 +815,7 @@ async def final_action_callback(client, cb):
 if __name__ == "__main__":
     logger.info("🚀 Starting the bot...")
     load_user_ad_links()
-    load_promo_config()  # <-- Load new config on startup
+    load_promo_config()
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
