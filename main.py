@@ -112,7 +112,7 @@ def search_tmdb(query: str):
         response = requests.get(search_url, timeout=10)
         response.raise_for_status()
         results = [r for r in response.json().get("results", []) if r.get("media_type") in ["movie", "tv"]]
-        return results[:5]
+        return results[:15]
     except requests.exceptions.RequestException as e:
         print(f"Error searching TMDB: {e}")
         return []
