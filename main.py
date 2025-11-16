@@ -48,7 +48,7 @@ except (ValueError, TypeError):
 user_conversations = {}
 user_channels = {}
 USER_AD_LINKS_FILE = "user_ad_links.json"
-DEFAULT_AD_LINK = "https://www.google.com"  # Default Ad Link if a user hasn't set one
+DEFAULT_AD_LINK = "https://www.effectivegatecpm.com/tcv8t3ez?key=963db7dfa28636112ea21bcca599d8fc"  # Default Ad Link if a user hasn't set one
 user_ad_links = {}
 
 # ---- FUNCTIONS to save and load user-specific ad links ----
