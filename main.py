@@ -114,7 +114,7 @@ def search_tmdb(query: str):
     else:
         name = query.strip()
     try:
-        search_url = f"https://api.themoviedb.org/3/search/multi?api_key={TMDB_API_KEY}&query={name}"
+        search_url = f"https://api.themoviedb.org/3/search/multi?api_key={TMDB_API_KEY}&query={name}&include_adult=true"
         if year:
             search_url += f"&year={year}"
         response = requests.get(search_url, timeout=10)
@@ -389,12 +389,74 @@ async def start_command(client, message: Message):
         f"To get started, go to any chat, type my username (`@{bot_username}`) and then a movie name.\n"
         f"Example: `@{bot_username} Inception`\n\n"
         "**Available Commands:**\n"
+        "`/poster` - Get HD posters for any movie/series.\n"
         "`/setchannel` - Set your channel for posting.\n"
         "`/manual` - Add content details manually.\n"
         "`/setadlink` - Update your personal advertisement link.\n"
         "`/myadlink` - View your current ad link.\n"
         "`/cancel` - Cancel the current operation."
     )
+
+@bot.on_message(filters.command("poster") & filters.private)
+async def poster_command(client, message: Message):
+    """Handles the /poster command to fetch movie posters."""
+    if len(message.command) < 2:
+        await message.reply_text("⚠️ **ব্যবহার:** `/poster <movie or series name>`")
+        return
+
+    query = message.text.split(" ", 1)[1]
+    processing_msg = await message.reply_text(f"🔎 **{query}**-এর পোস্টার খোঁজা হচ্ছে...")
+
+    # Search for the movie/series using the existing function
+    results = search_tmdb(query)
+    if not results:
+        await processing_msg.edit_text(f"❌ দুঃখিত, **{query}** নামের কোনো মুভি বা সিরিজ খুঁজে পাওয়া যায়নি।")
+        return
+
+    top_result = results[0]
+    title = top_result.get("title") or top_result.get("name")
+    year = (top_result.get("release_date") or top_result.get("first_air_date") or "----")[:4]
+    
+    poster_path = top_result.get("poster_path")
+    backdrop_path = top_result.get("backdrop_path")
+
+    # Delete the "searching" message
+    await processing_msg.delete()
+
+    sent_any = False
+    # Send Portrait Poster (লম্বালম্বি)
+    if poster_path:
+        # Use 'original' for the best quality
+        portrait_url = f"https://image.tmdb.org/t/p/original{poster_path}"
+        try:
+            await client.send_photo(
+                chat_id=message.chat.id,
+                photo=portrait_url,
+                caption=f"✅ **{title} ({year})**\nPortrait Poster (লম্বালম্বি)"
+            )
+            sent_any = True
+        except Exception as e:
+            logger.error(f"Failed to send portrait poster for {title}: {e}")
+            await message.reply_text("দুঃখিত, Portrait Poster-টি পাঠাতে একটি সমস্যা হয়েছে।")
+
+
+    # Send Landscape Poster (চ্যাপ্টা)
+    if backdrop_path:
+        # Use 'original' for the best quality
+        landscape_url = f"https://image.tmdb.org/t/p/original{backdrop_path}"
+        try:
+            await client.send_photo(
+                chat_id=message.chat.id,
+                photo=landscape_url,
+                caption=f"✅ **{title} ({year})**\nLandscape Poster (চ্যাপ্টা)"
+            )
+            sent_any = True
+        except Exception as e:
+            logger.error(f"Failed to send landscape poster for {title}: {e}")
+            await message.reply_text("দুঃখিত, Landscape Poster-টি পাঠাতে একটি সমস্যা হয়েছে।")
+
+    if not sent_any:
+        await message.reply_text(f"দুঃখিত, **{title} ({year})**-এর জন্য কোনো পোস্টার খুঁজে পাওয়া যায়নি।")
 
 @bot.on_message(filters.command("setchannel") & filters.private)
 async def set_channel_command(_, message: Message):
@@ -499,7 +561,7 @@ async def details_command_handler(client, message: Message):
 @bot.on_message(
     filters.text &
     filters.private &
-    ~filters.command(["start", "setchannel", "cancel", "manual", "setadlink", "myadlink", "details"])
+    ~filters.command(["start", "setchannel", "cancel", "manual", "setadlink", "myadlink", "details", "poster"])
 )
 async def conversation_text_handler(client, message: Message):
     user_id = message.from_user.id
