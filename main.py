@@ -8,13 +8,21 @@ import re
 import json
 import requests
 from threading import Thread
+import logging
 
 # --- Third-party Library Imports ---
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from pyrogram import Client, filters, enums
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
+from pyrogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton, Message,
+    InlineQuery, InlineQueryResultArticle, InputTextMessageContent
+)
 from flask import Flask
 from dotenv import load_dotenv
+
+# --- Basic Logging Setup ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -27,13 +35,13 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 
 # --- Essential variable check ---
 if not all([BOT_TOKEN, API_ID, API_HASH, TMDB_API_KEY]):
-    print("❌ FATAL ERROR: One or more environment variables are missing. Please check your .env file.")
+    logger.critical("❌ FATAL ERROR: One or more environment variables are missing. Please check your .env file.")
     sys.exit(1)
 
 try:
     API_ID = int(API_ID)
 except (ValueError, TypeError):
-    print("❌ FATAL ERROR: API_ID must be an integer. Please check your .env file.")
+    logger.critical("❌ FATAL ERROR: API_ID must be an integer. Please check your .env file.")
     sys.exit(1)
 
 # ---- GLOBAL VARIABLES for state management & AD LINK ----
@@ -50,7 +58,7 @@ def save_user_ad_links():
         with open(USER_AD_LINKS_FILE, "w") as f:
             json.dump(user_ad_links, f, indent=4)
     except IOError as e:
-        print(f"⚠️ Error saving user ad links: {e}")
+        logger.warning(f"⚠️ Error saving user ad links: {e}")
 
 def load_user_ad_links():
     """Loads user ad links from a JSON file on startup."""
@@ -61,9 +69,9 @@ def load_user_ad_links():
                 user_ad_links = json.load(f)
                 # Ensure keys are integers if JSON saves them as strings
                 user_ad_links = {int(k): v for k, v in user_ad_links.items()}
-                print(f"✅ User ad links loaded from file.")
+                logger.info("✅ User ad links loaded from file.")
         except (IOError, json.JSONDecodeError) as e:
-            print(f"⚠️ Error loading user ad links: {e}")
+            logger.warning(f"⚠️ Error loading user ad links: {e}")
 
 # ---- FLASK APP FOR KEEP-ALIVE ----
 app = Flask(__name__)
@@ -78,7 +86,7 @@ def run_flask():
 try:
     bot = Client("moviebot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 except Exception as e:
-    print(f"❌ FATAL ERROR: Could not initialize the bot client. Error: {e}")
+    logger.critical(f"❌ FATAL ERROR: Could not initialize the bot client. Error: {e}")
     sys.exit(1)
 
 # ---- FONT CONFIGURATION for Image Generation ----
@@ -89,7 +97,7 @@ try:
     FONT_BADGE = ImageFont.truetype("Poppins-Bold.ttf", 22)
     FONT_SEARCH_BADGE = ImageFont.truetype("Poppins-Bold.ttf", 24)
 except IOError:
-    print("⚠️ Warning: Poppins font files not found. Image generation will use default fonts.")
+    logger.warning("⚠️ Warning: Poppins font files not found. Image generation will use default fonts.")
     FONT_BOLD = ImageFont.load_default()
     FONT_REGULAR = ImageFont.load_default()
     FONT_SMALL = ImageFont.load_default()
@@ -114,7 +122,7 @@ def search_tmdb(query: str):
         results = [r for r in response.json().get("results", []) if r.get("media_type") in ["movie", "tv"]]
         return results[:15]
     except requests.exceptions.RequestException as e:
-        print(f"Error searching TMDB: {e}")
+        logger.error(f"Error searching TMDB: {e}")
         return []
 
 def get_tmdb_details(media_type: str, media_id: int):
@@ -124,7 +132,7 @@ def get_tmdb_details(media_type: str, media_id: int):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching TMDB details: {e}")
+        logger.error(f"Error fetching TMDB details: {e}")
         return None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
@@ -317,7 +325,7 @@ def generate_image(data: dict):
                 poster_response = requests.get(data["manual_poster_url"], timeout=15)
                 if poster_response.ok: poster_bytes = poster_response.content
             except requests.exceptions.RequestException as e:
-                print(f"⚠️ Could not download manual poster from URL: {e}")
+                logger.warning(f"⚠️ Could not download manual poster from URL: {e}")
         elif data.get('poster_path'):
             poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
             poster_response = requests.get(poster_url)
@@ -337,7 +345,7 @@ def generate_image(data: dict):
                     darken_layer = Image.new('RGBA', bg_img.size, (0, 0, 0, 150))
                     bg_img = Image.alpha_composite(bg_img, darken_layer)
             except Exception as e:
-                print(f"Could not process backdrop image: {e}")
+                logger.warning(f"Could not process backdrop image: {e}")
         lang_text = data.get('custom_language', '').title()
         if lang_text:
             try:
@@ -348,7 +356,7 @@ def generate_image(data: dict):
                 draw_ribbon.text((text_x, 5), lang_text, font=FONT_BADGE, fill="#FFFFFF")
                 poster_img.paste(ribbon, (0, 0), ribbon)
             except Exception as e:
-                print(f"Could not add language ribbon: {e}")
+                logger.warning(f"Could not add language ribbon: {e}")
         bg_img.paste(poster_img, (50, 60), poster_img)
         draw = ImageDraw.Draw(bg_img)
         title = data.get("title") or data.get("name") or "N/A"
@@ -368,7 +376,7 @@ def generate_image(data: dict):
         img_buffer.seek(0)
         return img_buffer
     except Exception as e:
-        print(f"Error generating image: {e}")
+        logger.error(f"Error generating image: {e}")
         return None
 
 # ---- BOT HANDLERS ----
@@ -377,7 +385,8 @@ async def start_command(_, message: Message):
     user_conversations.pop(message.from_user.id, None)
     await message.reply_text(
         "👋 **Welcome to the Movie & Series Bot!**\n\n"
-        "Send me a movie or series name (e.g., `Inception 2010`) to get started.\n\n"
+        "To get started, go to any chat, type my username (`@your_bot_username`) and then a movie name.\n"
+        "Example: `@your_bot_username Inception`\n\n"
         "**Available Commands:**\n"
         "`/setchannel` - Set your channel for posting.\n"
         "`/manual` - Add content details manually.\n"
@@ -425,11 +434,69 @@ async def my_ad_link_command(_, message: Message):
     link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     await message.reply_text(f"🔗 **Your Current Ad Link:**\n`{link}`")
 
-# ----- THIS IS THE CORRECTED AND MODIFIED TEXT HANDLER -----
-@bot.on_message(filters.text & filters.private & ~filters.command(["start", "setchannel", "cancel", "manual", "setadlink", "myadlink"]))
-async def text_handler(client, message: Message):
+# ---- NEW: INLINE QUERY HANDLER FOR LIVE SEARCH ----
+@bot.on_inline_query()
+async def inline_query_handler(client, query: InlineQuery):
+    search_query = query.query.strip()
+    if not search_query:
+        await query.answer(
+            results=[],
+            switch_pm_text="Type a movie or series name to search...",
+            switch_pm_parameter="start"
+        )
+        return
+
+    results = search_tmdb(search_query)
+    inline_results = []
+
+    for r in results:
+        title = r.get('title') or r.get('name')
+        year = (r.get('release_date') or r.get('first_air_date') or '----').split('-')[0]
+        media_type_icon = '🎬' if r.get('media_type') == 'movie' else '📺'
+        description = f"{media_type_icon} {r.get('media_type', '').title()} | {year}"
+        
+        # This command will be sent to the bot when a user clicks the result
+        command_to_send = f"/details {r['media_type']}_{r['id']}"
+
+        poster_url = f"https://image.tmdb.org/t/p/w200{r.get('poster_path')}" if r.get('poster_path') else "https://via.placeholder.com/200x300.png?text=No+Poster"
+
+        inline_results.append(
+            InlineQueryResultArticle(
+                title=f"{title} ({year})",
+                description=description,
+                thumb_url=poster_url,
+                input_message_content=InputTextMessageContent(command_to_send)
+            )
+        )
+    
+    await query.answer(results=inline_results, cache_time=10)
+
+# ---- NEW: HANDLER FOR WHEN A USER CLICKS AN INLINE RESULT ----
+@bot.on_message(filters.command("details") & filters.private)
+async def details_command_handler(client, message: Message):
+    try:
+        _, data = message.text.split(" ", 1)
+        media_type, media_id = data.split("_")
+    except ValueError:
+        await message.reply_text("❌ Invalid selection. Please try searching again.")
+        return
+
+    processing_msg = await message.reply_text("⏳ Fetching details for your selection...")
+    details = get_tmdb_details(media_type, int(media_id))
+    if not details:
+        await processing_msg.edit_text("❌ Failed to get details. Please try again.")
+        return
+
     user_id = message.from_user.id
-    text = message.text.strip()
+    user_conversations[user_id] = {"details": details, "links": [], "state": "wait_custom_language"}
+    
+    await processing_msg.edit_text("✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`, `English`, `Dual Audio`).")
+
+
+# ---- Conversation handlers (for links, language, manual entry) ----
+@bot.on_message(filters.text & filters.private & ~filters.command())
+async def conversation_text_handler(client, message: Message):
+    user_id = message.from_user.id
     if convo := user_conversations.get(user_id):
         state = convo.get("state")
         if state and state != "done":
@@ -441,70 +508,17 @@ async def text_handler(client, message: Message):
                 "wait_link_label": link_conversation_handler, "wait_link_url": link_conversation_handler
             }
             if handler := handlers.get(state):
-                return await handler(client, message)
-
-    processing_msg = await message.reply_text("🔍 Searching for your content...")
-    results = search_tmdb(text)
-    if not results:
-        return await processing_msg.edit_text("❌ No content found. Try a more specific name (e.g., `Movie Name 2023`) or use `/manual`.")
-
-    await processing_msg.edit_text(f"✅ Found {len(results)} results. Sending them now...")
-
-    # Loop through each result and send a separate photo with its own button
-    for r in results:
-        title = r.get('title') or r.get('name')
-        year = (r.get('release_date') or r.get('first_air_date') or '----').split('-')[0]
-        media_type_icon = '🎬' if r.get('media_type') == 'movie' else '📺'
-        
-        # Prepare the button for this specific result
-        button_text = f"{media_type_icon} {title} ({year})"
-        callback_data = f"select_{r['media_type']}_{r['id']}"
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(button_text, callback_data=callback_data)]])
-        
-        poster_url = f"https://image.tmdb.org/t/p/w200{r.get('poster_path')}" if r.get('poster_path') else "https://via.placeholder.com/200x300.png?text=No+Poster"
-
-        try:
-            # Send the poster as a separate photo with its own inline button
-            await client.send_photo(
-                chat_id=message.chat.id,
-                photo=poster_url,
-                reply_markup=keyboard
-            )
-        except Exception as e:
-            # If sending a photo fails, we can log it and continue
-            print(f"Could not send photo for '{title}': {e}")
-            # Optionally, send a text message as a fallback
-            await client.send_message(
-                chat_id=message.chat.id,
-                text=f"Could not load image for: **{title}**",
-                reply_markup=keyboard
-            )
-            
-    await processing_msg.delete()
-
-@bot.on_message(filters.photo & filters.private)
-async def photo_handler(_, message: Message):
-    if message.from_user.id in user_conversations:
-        await message.reply_text("⚠️ Currently, I can only accept poster URLs during manual entry. Please use the `/manual` command and provide a URL when prompted.")
-
-@bot.on_callback_query(filters.regex("^select_"))
-async def selection_callback(_, cb):
-    # We no longer need to delete the message as each photo is separate.
-    # Instead, we can edit the photo's caption or send a new message.
-    await cb.answer("Fetching details...", show_alert=False)
-    _, media_type, media_id = cb.data.split("_")
-    details = get_tmdb_details(media_type, int(media_id))
-    if not details:
-        return await cb.message.reply_text("❌ Failed to get details. Please try again.")
-
-    # Hide the button on the selected photo
-    await cb.edit_message_reply_markup(reply_markup=None)
-    
-    user_id = cb.from_user.id
-    user_conversations[user_id] = {"details": details, "links": [], "state": "wait_custom_language"}
-    
-    # Send a new message to continue the conversation
-    await bot.send_message(cb.message.chat.id, "✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`, `English`, `Dual Audio`).")
+                await handler(client, message)
+            else:
+                # Fallback message if the user is in a conversation but no specific handler is found
+                await message.reply_text("I'm waiting for a specific input. Use /cancel to restart.")
+    else:
+        # This message is shown if the user just types text without a command or active conversation
+        await message.reply_text(
+            "Please use the inline search to find content.\n"
+            "Go to any chat, type my username, and then a movie name.\n\n"
+            "Example: `@your_bot_username The Matrix`"
+        )
 
 
 @bot.on_callback_query(filters.regex("^addlink_"))
@@ -626,7 +640,7 @@ async def final_action_callback(client, cb):
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 কোড কপি করতে এখানে ক্লিক করুন", url=response.text.strip())]])
             )
         except requests.exceptions.RequestException as e:
-            print(f"Error creating paste link: {e}")
+            logger.error(f"Error creating paste link: {e}")
             await cb.message.reply_text("⚠️ **দুঃখিত!** কোডটির জন্য লিংক তৈরি করা সম্ভব হয়নি। ফাইল হিসেবে পাঠানো হলো।")
             file_bytes = io.BytesIO(html_code.encode('utf-8'))
             file_bytes.name = f"{(convo['details'].get('title') or 'post').replace(' ', '_')}.html"
@@ -655,10 +669,10 @@ async def final_action_callback(client, cb):
 
 # ---- MAIN EXECUTION ----
 if __name__ == "__main__":
-    print("🚀 Starting the bot...")
+    logger.info("🚀 Starting the bot...")
     load_user_ad_links()
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
     bot.run()
-    print("👋 Bot has stopped.")
+    logger.info("👋 Bot has stopped.")
