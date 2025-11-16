@@ -107,7 +107,6 @@ except Exception as e:
     sys.exit(1)
 
 # ---- FONT CONFIGURATION ----
-# NOTE: Make sure to upload 'Poppins-Bold.ttf' and 'Poppins-Regular.ttf' with your bot.
 try:
     FONT_BOLD = ImageFont.truetype("Poppins-Bold.ttf", 32)
     FONT_REGULAR = ImageFont.truetype("Poppins-Regular.ttf", 24)
@@ -402,11 +401,11 @@ async def start_command(client, message: Message):
         f"Example: `@{bot_username} Inception`\n\n"
         "**Available Commands:**\n"
         "`/poster` - Get HD posters for any movie/series.\n"
-        "`/setchannel` - Set your main channel for posting.\n"
+        "`/setchannel` - Set your main channel for posting (public/private).\n"
         "`/manual` - Add content details manually.\n"
         "`/setadlink` - Update your personal advertisement link.\n\n"
         "**Auto-Post Commands:**\n"
-        "`/setpromochannel` - Set the channel for auto-posts.\n"
+        "`/setpromochannel` - Set the channel for auto-posts (public/private).\n"
         "`/setpromoname` - Set your brand name for auto-posts.\n"
         "`/setwatchlink` - Set the 'Watch' button URL.\n"
         "`/setdownloadlink` - Set the 'How to Download' button URL.\n"
@@ -458,11 +457,27 @@ async def poster_command(client, message: Message):
 
 @bot.on_message(filters.command("setchannel") & filters.private)
 async def set_channel_command(_, message: Message):
-    if len(message.command) > 1 and message.command[1].startswith('@'):
-        user_channels[message.from_user.id] = message.command[1]
-        await message.reply_text(f"✅ Main channel successfully set to `{message.command[1]}`.")
+    if len(message.command) > 1:
+        channel_input = message.command[1]
+        target_channel = None
+        
+        if channel_input.startswith('@'):
+            target_channel = channel_input
+        else:
+            try:
+                target_channel = int(channel_input)
+            except ValueError:
+                await message.reply_text(
+                    "⚠️ **অবৈধ ফর্ম্যাট!**\n\n"
+                    "পাবলিক চ্যানেলের জন্য `/setchannel @yourchannel` ব্যবহার করুন অথবা\n"
+                    "প্রাইভেট চ্যানেলের জন্য `/setchannel -100123456789` ব্যবহার করুন।"
+                )
+                return
+        
+        user_channels[message.from_user.id] = target_channel
+        await message.reply_text(f"✅ প্রধান চ্যানেল সফলভাবে সেট করা হয়েছে: `{target_channel}`.")
     else:
-        await message.reply_text("⚠️ **Usage:** `/setchannel @yourchannelusername`")
+        await message.reply_text("⚠️ **ব্যবহার:** `/setchannel <@username অথবা চ্যাট আইডি>`")
 
 @bot.on_message(filters.command("cancel") & filters.private)
 async def cancel_command(_, message: Message):
@@ -497,13 +512,29 @@ def get_user_promo_config(user_id: int):
 @bot.on_message(filters.command("setpromochannel") & filters.private)
 async def set_promo_channel_command(_, message: Message):
     user_id = message.from_user.id
-    if len(message.command) > 1 and message.command[1].startswith('@'):
+    if len(message.command) > 1:
+        channel_input = message.command[1]
         config = get_user_promo_config(user_id)
-        config["channel"] = message.command[1]
+        target_channel = None
+
+        if channel_input.startswith('@'):
+            target_channel = channel_input
+        else:
+            try:
+                target_channel = int(channel_input)
+            except ValueError:
+                await message.reply_text(
+                    "⚠️ **অবৈধ ফর্ম্যাট!**\n\n"
+                    "পাবলিক চ্যানেলের জন্য `/setpromochannel @yourchannel` ব্যবহার করুন অথবা\n"
+                    "প্রাইভেট চ্যানেলের জন্য `/setpromochannel -100123456789` ব্যবহার করুন।"
+                )
+                return
+        
+        config["channel"] = target_channel
         save_promo_config()
-        await message.reply_text(f"✅ Auto-post channel set to `{config['channel']}`.")
+        await message.reply_text(f"✅ অটো-পোস্ট চ্যানেল সেট করা হয়েছে: `{config['channel']}`.")
     else:
-        await message.reply_text("⚠️ **Usage:** `/setpromochannel @yourchannelusername`")
+        await message.reply_text("⚠️ **ব্যবহার:** `/setpromochannel <@username অথবা চ্যাট আইডি>`")
 
 @bot.on_message(filters.command("setpromoname") & filters.private)
 async def set_promo_name_command(_, message: Message):
@@ -592,8 +623,6 @@ async def details_command_handler(client, message: Message):
     await processing_msg.edit_text("✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`).")
 
 # ---- CONVERSATION HANDLERS ----
-# ############## MAIN ERROR FIX ##############
-# The TypeError was fixed here by providing a list of all commands to the filter.
 @bot.on_message(
     filters.text & 
     filters.private & 
@@ -612,6 +641,7 @@ async def conversation_text_handler(client, message: Message):
                 "manual_wait_overview": manual_conversation_handler, "manual_wait_genres": manual_conversation_handler,
                 "manual_wait_rating": manual_conversation_handler, "manual_wait_poster_url": manual_conversation_handler,
                 "wait_custom_language": language_conversation_handler,
+                "wait_quality": quality_conversation_handler,  # <-- NEW STATE HANDLER ADDED
                 "wait_link_label": link_conversation_handler, "wait_link_url": link_conversation_handler
             }
             if handler := handlers.get(state):
@@ -658,10 +688,18 @@ async def language_conversation_handler(_, message: Message):
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     convo["details"]["custom_language"] = message.text.strip()
+    convo["state"] = "wait_quality" # <-- STATE CHANGED
+    await message.reply_text(f"✅ Language set to: **{message.text.strip()}**\n\n**💿 Now, please enter the Quality.**\nExample: `1080p | 720p WEB-DL`")
+
+# <-- NEW FUNCTION TO HANDLE QUALITY -->
+async def quality_conversation_handler(_, message: Message):
+    user_id = message.from_user.id
+    convo = user_conversations[user_id]
+    convo["details"]["custom_quality"] = message.text.strip()
     convo["state"] = "ask_links"
     buttons = [[InlineKeyboardButton("✅ Yes, add links", callback_data=f"addlink_yes_{user_id}")], 
                [InlineKeyboardButton("❌ No, skip", callback_data=f"addlink_no_{user_id}")]]
-    await message.reply_text(f"✅ Language set.\n\n**🔗 Add Download Links for Blogger?**", reply_markup=InlineKeyboardMarkup(buttons))
+    await message.reply_text(f"✅ Quality set.\n\n**🔗 Add Download Links for Blogger?**", reply_markup=InlineKeyboardMarkup(buttons))
 
 async def manual_conversation_handler(_, message: Message):
     user_id = message.from_user.id
@@ -699,7 +737,7 @@ async def manual_conversation_handler(_, message: Message):
             await message.reply_text(f"✅ Poster URL set! Now, enter the language.")
         else: await message.reply_text("⚠️ Invalid URL.")
 
-# ---- AUTOMATED CHANNEL POST FUNCTION ----
+# ---- AUTOMATED CHANNEL POST FUNCTION (UPDATED) ----
 async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
     convo = user_conversations.get(user_id)
     promo_config = user_promo_config.get(user_id)
@@ -714,22 +752,24 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         return
         
     details = convo["details"]
-    language = details.get('custom_language', 'N/A').title()
+    language = details.get('custom_language', 'N/A')
+    quality = details.get('custom_quality', 'N/A') # <-- Get quality
 
-    # --- Get HD Image from generated content (No Blurring) ---
     channel_post_image = convo.get("generated", {}).get("image")
     if channel_post_image:
         channel_post_image.seek(0)
 
-    title = details.get("title") or details.get("name") or "New Content"
+    # <-- NEW CAPTION FORMAT -->
     caption = (
-        f"🎬 **{title}**\n\n"
         f"🔥🔥 New Content Added on {promo_config['name']}!\n"
         f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
         f"💿 **Language:** {language}\n"
+        f"💿 **Quality:** {quality}\n"
         f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
         f"👇 Click Below to Watch or Download 👇"
     )
+
+    # <-- NEW BUTTONS WITH EMOJIS -->
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Watch on Website", url=promo_config["watch_link"])],
         [InlineKeyboardButton("🤔 How to Download?", url=promo_config["download_link"])],
@@ -741,6 +781,7 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         if channel_post_image:
             await client.send_photo(channel_id, photo=channel_post_image, caption=caption, reply_markup=buttons)
         else:
+            # Fallback if no image is generated
             await client.send_message(channel_id, text=caption, reply_markup=buttons)
         await client.send_message(confirmation_chat_id, f"✅ Auto-post sent to `{channel_id}`!")
     except Exception as e:
@@ -769,11 +810,15 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
 
     await msg_to_edit.delete()
     if image_file:
+        image_copy_for_channel = io.BytesIO(image_file.getvalue()) # Create a copy for the channel post
+        convo["generated"]["image"] = image_copy_for_channel
+        
+        image_file.seek(0) # Reset main image for this post
         await client.send_photo(msg_to_edit.chat.id, photo=image_file, caption=caption, reply_markup=InlineKeyboardMarkup(buttons))
     else:
         await client.send_message(msg_to_edit.chat.id, "⚠️ **Image could not be generated.**\n\n" + caption, reply_markup=InlineKeyboardMarkup(buttons))
         
-    await msg_to_edit.message.reply_text("⏳ Sending automatic post to channel...")
+    await client.send_message(msg_to_edit.chat.id, "⏳ Sending automatic post to channel...")
     await send_channel_post(client, user_id, msg_to_edit.chat.id)
 
 @bot.on_callback_query(filters.regex("^(get_|post_)"))
