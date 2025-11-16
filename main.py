@@ -641,7 +641,7 @@ async def conversation_text_handler(client, message: Message):
                 "manual_wait_overview": manual_conversation_handler, "manual_wait_genres": manual_conversation_handler,
                 "manual_wait_rating": manual_conversation_handler, "manual_wait_poster_url": manual_conversation_handler,
                 "wait_custom_language": language_conversation_handler,
-                "wait_quality": quality_conversation_handler,  # <-- NEW STATE HANDLER ADDED
+                "wait_quality": quality_conversation_handler,
                 "wait_link_label": link_conversation_handler, "wait_link_url": link_conversation_handler
             }
             if handler := handlers.get(state):
@@ -688,10 +688,9 @@ async def language_conversation_handler(_, message: Message):
     user_id = message.from_user.id
     convo = user_conversations[user_id]
     convo["details"]["custom_language"] = message.text.strip()
-    convo["state"] = "wait_quality" # <-- STATE CHANGED
+    convo["state"] = "wait_quality"
     await message.reply_text(f"✅ Language set to: **{message.text.strip()}**\n\n**💿 Now, please enter the Quality.**\nExample: `1080p | 720p WEB-DL`")
 
-# <-- NEW FUNCTION TO HANDLE QUALITY -->
 async def quality_conversation_handler(_, message: Message):
     user_id = message.from_user.id
     convo = user_conversations[user_id]
@@ -753,13 +752,23 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         
     details = convo["details"]
     language = details.get('custom_language', 'N/A')
-    quality = details.get('custom_quality', 'N/A') # <-- Get quality
+    quality = details.get('custom_quality', 'N/A')
 
-    channel_post_image = convo.get("generated", {}).get("image")
-    if channel_post_image:
-        channel_post_image.seek(0)
+    # --- NEW: Logic to get HD Portrait Poster ---
+    photo_to_send = None
+    # Priority 1: Manual Poster URL if provided
+    if details.get("manual_poster_url"):
+        photo_to_send = details["manual_poster_url"]
+    # Priority 2: Original TMDB Poster
+    elif details.get("poster_path"):
+        photo_to_send = f"https://image.tmdb.org/t/p/original{details['poster_path']}"
+    # Fallback: The wide image generated for the main post
+    else:
+        photo_to_send = convo.get("generated", {}).get("image")
+        if photo_to_send:
+            photo_to_send.seek(0)
+    # --- END NEW LOGIC ---
 
-    # <-- NEW CAPTION FORMAT -->
     caption = (
         f"🔥🔥 New Content Added on {promo_config['name']}!\n"
         f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
@@ -769,7 +778,6 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         f"👇 Click Below to Watch or Download 👇"
     )
 
-    # <-- NEW BUTTONS WITH EMOJIS -->
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Watch on Website", url=promo_config["watch_link"])],
         [InlineKeyboardButton("🤔 How to Download?", url=promo_config["download_link"])],
@@ -778,13 +786,13 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
 
     try:
         channel_id = promo_config["channel"]
-        if channel_post_image:
-            await client.send_photo(channel_id, photo=channel_post_image, caption=caption, reply_markup=buttons)
+        if photo_to_send:
+            await client.send_photo(channel_id, photo=photo_to_send, caption=caption, reply_markup=buttons)
         else:
-            # Fallback if no image is generated
             await client.send_message(channel_id, text=caption, reply_markup=buttons)
         await client.send_message(confirmation_chat_id, f"✅ Auto-post sent to `{channel_id}`!")
     except Exception as e:
+        logger.error(f"Failed to send auto-post to {promo_config.get('channel')}: {e}")
         await client.send_message(confirmation_chat_id, f"❌ Failed to send auto-post. **Error:** `{e}`")
 
 # ---- FINAL CONTENT GENERATION (ORCHESTRATOR) ----
@@ -810,10 +818,10 @@ async def generate_final_content(client, user_id, msg_to_edit: Message):
 
     await msg_to_edit.delete()
     if image_file:
-        image_copy_for_channel = io.BytesIO(image_file.getvalue()) # Create a copy for the channel post
+        image_copy_for_channel = io.BytesIO(image_file.getvalue())
         convo["generated"]["image"] = image_copy_for_channel
         
-        image_file.seek(0) # Reset main image for this post
+        image_file.seek(0)
         await client.send_photo(msg_to_edit.chat.id, photo=image_file, caption=caption, reply_markup=InlineKeyboardMarkup(buttons))
     else:
         await client.send_message(msg_to_edit.chat.id, "⚠️ **Image could not be generated.**\n\n" + caption, reply_markup=InlineKeyboardMarkup(buttons))
