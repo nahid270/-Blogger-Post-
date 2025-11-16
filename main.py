@@ -385,9 +385,9 @@ async def start_command(client, message: Message):
     user_conversations.pop(message.from_user.id, None)
     bot_username = (await client.get_me()).username
     await message.reply_text(
-        "👋 **Welcome to the Movie & Series Bot!**\n\n"
-        "To get started, go to any chat, type my username (`@" + bot_username + "`) and then a movie name.\n"
-        "Example: `@" + bot_username + " Inception`\n\n"
+        f"👋 **Welcome to the Movie & Series Bot!**\n\n"
+        f"To get started, go to any chat, type my username (`@{bot_username}`) and then a movie name.\n"
+        f"Example: `@{bot_username} Inception`\n\n"
         "**Available Commands:**\n"
         "`/setchannel` - Set your channel for posting.\n"
         "`/manual` - Add content details manually.\n"
@@ -443,7 +443,8 @@ async def inline_query_handler(client, query: InlineQuery):
         await query.answer(
             results=[],
             switch_pm_text="Type a movie or series name to search...",
-            switch_pm_parameter="start"
+            switch_pm_parameter="start",
+            cache_time=0
         )
         return
 
@@ -495,7 +496,11 @@ async def details_command_handler(client, message: Message):
 
 
 # ---- Conversation handlers (for links, language, manual entry) ----
-@bot.on_message(filters.text & filters.private & ~filters.command)
+@bot.on_message(
+    filters.text &
+    filters.private &
+    ~filters.command(["start", "setchannel", "cancel", "manual", "setadlink", "myadlink", "details"])
+)
 async def conversation_text_handler(client, message: Message):
     user_id = message.from_user.id
     if convo := user_conversations.get(user_id):
@@ -519,7 +524,7 @@ async def conversation_text_handler(client, message: Message):
         await message.reply_text(
             "Please use the inline search to find content.\n"
             "Go to any chat, type my username, and then a movie name.\n\n"
-            "Example: `@" + bot_username + " The Matrix`"
+            f"Example: `@{bot_username} The Matrix`"
         )
 
 
