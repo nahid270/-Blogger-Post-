@@ -751,8 +751,19 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         return
         
     details = convo["details"]
+    
+    # --- নতুন করে তথ্য সংগ্রহ ---
+    title = details.get("title") or details.get("name") or "N/A"
+    year = (details.get("release_date") or details.get("first_air_date") or "----")[:4]
     language = details.get('custom_language', 'N/A')
     quality = details.get('custom_quality', 'N/A')
+    rating = f"⭐ {details.get('vote_average', 0):.1f}/10"
+    
+    runtime_str = "N/A"
+    if runtime_minutes := details.get("runtime"):
+        hours = runtime_minutes // 60
+        minutes = runtime_minutes % 60
+        runtime_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
 
     # --- NEW: Logic to get HD Portrait Poster ---
     photo_to_send = None
@@ -769,13 +780,16 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
             photo_to_send.seek(0)
     # --- END NEW LOGIC ---
 
+    # --- নতুন ক্যাপশন ফরম্যাট ---
     caption = (
-        f"🔥🔥 New Content Added on {promo_config['name']}!\n"
+        f"🎬 **{title} ({year})**\n\n"
+        f"**🎭 Genres:** {', '.join([g['name'] for g in details.get('genres', [])] or ['N/A'])}\n"
+        f"**🗣️ Language:** {language}\n"
+        f"**💿 Quality:** {quality}\n"
+        f"**⏳ Runtime:** {runtime_str}\n"
+        f"**⭐ Rating:** {rating}\n"
         f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        f"💿 **Language:** {language}\n"
-        f"💿 **Quality:** {quality}\n"
-        f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-        f"👇 Click Below to Watch or Download 👇"
+        f"👇 Click Below to Watch or Download on {promo_config['name']}! 👇"
     )
 
     buttons = InlineKeyboardMarkup([
@@ -794,6 +808,7 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
     except Exception as e:
         logger.error(f"Failed to send auto-post to {promo_config.get('channel')}: {e}")
         await client.send_message(confirmation_chat_id, f"❌ Failed to send auto-post. **Error:** `{e}`")
+
 
 # ---- FINAL CONTENT GENERATION (ORCHESTRATOR) ----
 async def generate_final_content(client, user_id, msg_to_edit: Message):
