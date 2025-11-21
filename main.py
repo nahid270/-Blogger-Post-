@@ -48,7 +48,7 @@ except (ValueError, TypeError):
 user_conversations = {}
 user_channels = {}
 USER_AD_LINKS_FILE = "user_ad_links.json"
-DEFAULT_AD_LINK = "https://www.google.com"  # Default placeholder
+DEFAULT_AD_LINK = "https://www.google.com"
 user_ad_links = {}
 
 # --- CHANNEL POST CONFIGURATION ---
@@ -94,7 +94,7 @@ def load_promo_config():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Movie/Series Bot with Step-by-Step FileDL is running!"
+    return "✅ Final Bot (Text Code Version) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -147,7 +147,7 @@ def get_tmdb_details(media_type: str, media_id: int):
         logger.error(f"Error fetching TMDB details: {e}")
         return None
 
-# ---- CONTENT GENERATION FUNCTIONS (ORIGINAL) ----
+# ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
@@ -170,33 +170,25 @@ def generate_formatted_caption(data: dict):
     ]
 
     caption_text = f"🎬 **{title} ({year})**\n\n"
-    
     if language:
-        caption_text += f"**🎭 Genres:** {genres}\n"
-        caption_text += f"**🗣️ Language:** {language}\n"
-        caption_text += f"**⏳ Runtime:** {runtime_str}\n"
-        caption_text += f"**⭐ Rating:** {rating}\n\n"
+        caption_text += f"**🎭 Genres:** {genres}\n**🗣️ Language:** {language}\n**⏳ Runtime:** {runtime_str}\n**⭐ Rating:** {rating}\n\n"
     else:
-        caption_text += f"**🎭 Genres:** {genres}\n"
-        caption_text += f"**⏳ Runtime:** {runtime_str} | **⭐ Rating:** {rating}\n\n"
+        caption_text += f"**🎭 Genres:** {genres}\n**⏳ Runtime:** {runtime_str} | **⭐ Rating:** {rating}\n\n"
 
     if cast != "N/A":
         caption_text += f"**👥 Cast:** _{cast}_\n\n"
 
     caption_text += f"**📝 Plot:** _{overview[:400]}{'...' if len(overview) > 400 else ''}_"
-    
     if similar_movies_list:
         caption_text += "\n\n**💡 You Might Also Like:**\n" + "\n".join(similar_movies_list)
         
     return caption_text
 
 def generate_html(data: dict, links: list, user_id: int):
-    # This is the original HTML generator for Movies/Series posts
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
-    TELEGRAM_LINK = "https://t.me/YourChannelLink" # Update this if needed
-    
+    TELEGRAM_LINK = "https://t.me/YourChannelLink"
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
@@ -227,17 +219,14 @@ def generate_html(data: dict, links: list, user_id: int):
         cast_html += '</div>'
 
     download_blocks_html = ""
-    if not links:
-        download_blocks_html = "<p>No download links available.</p>"
-    else:
-        for link in links:
-            download_blocks_html += f"""
-            <div class="dl-download-block">
-                <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
-                <div class="dl-timer-display"></div>
-                <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get {link['label']}</a>
-            </div>
-            """
+    for link in links:
+        download_blocks_html += f"""
+        <div class="dl-download-block">
+            <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
+            <div class="dl-timer-display"></div>
+            <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get {link['label']}</a>
+        </div>
+        """
 
     final_html = f"""
 <!-- Bot Generated Content Starts -->
@@ -257,8 +246,6 @@ def generate_html(data: dict, links: list, user_id: int):
         .dl-main-content {{ width: 100%; max-width: 500px; margin: auto; }}
         .dl-post-container {{ background: #ffffff; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); border: 1px solid #e7eaf3; }}
         .dl-instruction-box {{ background-color: #fffbe6; border: 1px solid #ffe58f; color: #333; padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: center; }}
-        .dl-instruction-box h2 {{ margin: 0 0 10px; font-size: 18px; }}
-        .dl-instruction-box p {{ margin: 5px 0; font-size: 14px; line-height: 1.5; }}
         .dl-download-block {{ border: 1px solid #ddd; border-radius: 12px; padding: 15px; margin-bottom: 15px; }}
         .dl-download-button, .dl-real-download-link {{ display: block; width: 100%; padding: 15px; text-align: center; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.3s; box-sizing: border-box; }}
         .dl-download-button {{ background: #ff5722; color: white !important; border: none; }}
@@ -323,9 +310,9 @@ def generate_html(data: dict, links: list, user_id: int):
 """
     return final_html
 
-# ---- NEW FUNCTION: FileDL Style HTML Generator ----
+# ---- UPDATED FUNCTION: Single Color (Uniform) Buttons ----
 def generate_filedl_html(title, links_list):
-    # CSS Styles (Matches the FilesDL screenshot)
+    # CSS Styles - Simplified for Uniformity
     css = """
     <style>
         .fdl-container { font-family: 'Segoe UI', sans-serif; text-align: center; max-width: 600px; margin: 0 auto; padding: 20px; background: #fff; }
@@ -334,16 +321,10 @@ def generate_filedl_html(title, links_list):
         .fdl-btn {
             display: inline-block; padding: 12px 15px; border-radius: 4px; text-decoration: none;
             color: white !important; font-weight: 500; font-size: 14px; flex: 1 1 45%; 
+            background-color: #007bff; /* Standard Blue for all buttons */
             box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s; text-align: center; border: none; margin-bottom: 5px;
         }
-        .fdl-btn:hover { opacity: 0.9; transform: translateY(-1px); }
-        
-        /* Button Colors based on Screenshot */
-        .btn-red { background-color: #dc3545; }   /* Fast Cloud, Telegram */
-        .btn-blue { background-color: #007bff; }  /* Direct Download */
-        .btn-cyan { background-color: #17a2b8; }  /* Fast Cloud-02, Resumable */
-        .btn-green { background-color: #28a745; } /* Login, Watch Online */
-        
+        .fdl-btn:hover { opacity: 0.9; transform: translateY(-1px); background-color: #0056b3; }
         .fdl-footer { font-size: 13px; color: #666; margin-top: 20px; line-height: 1.5; border-top: 1px solid #eee; padding-top: 15px;}
     </style>
     """
@@ -352,33 +333,18 @@ def generate_filedl_html(title, links_list):
     for link_data in links_list:
         label = link_data['label']
         url = link_data['url']
-        
-        # Color Logic
-        btn_class = "btn-blue" # Default Blue
-        lower_label = label.lower()
-        
-        if any(x in lower_label for x in ["fast", "telegram", "ultra", "mega"]):
-            btn_class = "btn-red"
-        elif "direct" in lower_label:
-            btn_class = "btn-blue"
-        elif any(x in lower_label for x in ["resumable", "cloud-02", "gofile", "drive"]):
-            btn_class = "btn-cyan"
-        elif any(x in lower_label for x in ["login", "watch", "gdflix", "stream"]):
-            btn_class = "btn-green"
-            
-        buttons_html += f'<a href="{url}" class="fdl-btn {btn_class}" target="_blank">{label}</a>\n'
+        # No more color logic check. All buttons get 'fdl-btn' class only.
+        buttons_html += f'<a href="{url}" class="fdl-btn" target="_blank">{label}</a>\n'
 
     html = f"""
     {css}
     <div class="fdl-container">
         <div class="fdl-title">{title}</div>
-        
         <div class="fdl-btn-container">
             {buttons_html}
         </div>
-        
         <div class="fdl-footer">
-            Thank you for using our site — enjoy ultra-fast downloads Speed - Powered by FilesDL!.<br>
+            Thank you for using our site — enjoy ultra-fast downloads Speed.<br>
             If one server is busy or slow, simply switch to another with one click for Fast speed :)
         </div>
     </div>
@@ -599,15 +565,21 @@ async def filedl_name_handler(client, message: Message):
         # Generate HTML
         final_html = generate_filedl_html(data["title"], data["links"])
         
-        # Send File
-        file_bytes = io.BytesIO(final_html.encode('utf-8'))
-        file_bytes.name = "filesdl_code.html"
-        
-        await message.reply_document(
-            document=file_bytes,
-            caption=f"✅ **Generated Successfully!**\nTotal Buttons: {len(data['links'])}\n\nUpload this to Blogger HTML view."
-        )
-        
+        # Send AS TEXT (Raw Code) instead of File
+        if len(final_html) < 4000:
+            await message.reply_text(
+                f"✅ **Your HTML Code:**\n\n```html\n{final_html}\n```",
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
+        else:
+             # Fallback to file if too long for Telegram message
+            file_bytes = io.BytesIO(final_html.encode('utf-8'))
+            file_bytes.name = "filesdl_code.html"
+            await message.reply_document(
+                document=file_bytes,
+                caption="✅ Code is too long for text, sending as file."
+            )
+
         # End Session
         user_conversations.pop(user_id, None)
         return
