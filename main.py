@@ -48,12 +48,12 @@ except (ValueError, TypeError):
 user_conversations = {}
 user_channels = {}
 USER_AD_LINKS_FILE = "user_ad_links.json"
-DEFAULT_AD_LINK = "https://www.effectivegatecpm.com/tcv8t3ez?key=963db7dfa28636112ea21bcca599d8fc"
+DEFAULT_AD_LINK = "https://www.google.com"  # Default placeholder
 user_ad_links = {}
 
 # --- CHANNEL POST CONFIGURATION ---
 USER_PROMO_CONFIG_FILE = "user_promo_config.json"
-user_promo_config = {} # Stores format: {user_id: {"channel": "@channel", "name": "CineZoneBD", "watch_link": "...", "download_link": "...", "request_link": "..."}}
+user_promo_config = {} 
 
 # ---- FUNCTIONS to save and load user-specific data ----
 def save_user_ad_links():
@@ -94,7 +94,7 @@ def load_promo_config():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Movie/Series Bot is up and running!"
+    return "✅ Final Movie/Series Bot with FileDL is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -147,7 +147,7 @@ def get_tmdb_details(media_type: str, media_id: int):
         logger.error(f"Error fetching TMDB details: {e}")
         return None
 
-# ---- CONTENT GENERATION FUNCTIONS ----
+# ---- CONTENT GENERATION FUNCTIONS (ORIGINAL) ----
 def generate_formatted_caption(data: dict):
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
@@ -191,11 +191,12 @@ def generate_formatted_caption(data: dict):
     return caption_text
 
 def generate_html(data: dict, links: list, user_id: int):
+    # This is the original HTML generator for Movies/Series posts
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
-    
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
-    TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"
+    TELEGRAM_LINK = "https://t.me/YourChannelLink" # Update this if needed
+    
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
@@ -213,16 +214,10 @@ def generate_html(data: dict, links: list, user_id: int):
     if cast_members:
         cast_html += '<h3 style="text-align:center; margin-top: 25px;">🎭 Meet the Cast 🎭</h3>'
         cast_html += '<div class="cast-container">'
-        
         for member in cast_members[:8]:
             member_name = member.get("name")
             profile_path = member.get("profile_path")
-            
-            if profile_path:
-                member_image_url = f"https://image.tmdb.org/t/p/w185{profile_path}"
-            else:
-                member_image_url = "https://via.placeholder.com/185x278.png?text=No+Image"
-
+            member_image_url = f"https://image.tmdb.org/t/p/w185{profile_path}" if profile_path else "https://via.placeholder.com/185x278.png?text=No+Image"
             cast_html += f"""
             <div class="cast-member">
                 <img src="{member_image_url}" alt="{member_name}" class="cast-photo">
@@ -328,6 +323,68 @@ def generate_html(data: dict, links: list, user_id: int):
 """
     return final_html
 
+# ---- NEW FUNCTION: FileDL Style HTML Generator ----
+def generate_filedl_html(title, links_list):
+    # CSS Styles (Matches the FilesDL screenshot)
+    css = """
+    <style>
+        .fdl-container { font-family: 'Segoe UI', sans-serif; text-align: center; max-width: 600px; margin: 0 auto; padding: 20px; background: #fff; }
+        .fdl-title { font-size: 20px; font-weight: 600; margin-bottom: 25px; color: #333; line-height: 1.4; }
+        .fdl-btn-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 20px; }
+        .fdl-btn {
+            display: inline-block; padding: 12px 15px; border-radius: 4px; text-decoration: none;
+            color: white !important; font-weight: 500; font-size: 14px; flex: 1 1 45%; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s; text-align: center; border: none; margin-bottom: 5px;
+        }
+        .fdl-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        
+        /* Button Colors based on Screenshot */
+        .btn-red { background-color: #dc3545; }   /* Fast Cloud, Telegram */
+        .btn-blue { background-color: #007bff; }  /* Direct Download */
+        .btn-cyan { background-color: #17a2b8; }  /* Fast Cloud-02, Resumable */
+        .btn-green { background-color: #28a745; } /* Login, Watch Online */
+        
+        .fdl-footer { font-size: 13px; color: #666; margin-top: 20px; line-height: 1.5; border-top: 1px solid #eee; padding-top: 15px;}
+    </style>
+    """
+    
+    buttons_html = ""
+    for link_data in links_list:
+        label = link_data['label']
+        url = link_data['url']
+        
+        # Color Logic
+        btn_class = "btn-blue" # Default Blue
+        lower_label = label.lower()
+        
+        if any(x in lower_label for x in ["fast", "telegram", "ultra", "mega"]):
+            btn_class = "btn-red"
+        elif "direct" in lower_label:
+            btn_class = "btn-blue"
+        elif any(x in lower_label for x in ["resumable", "cloud-02", "gofile", "drive"]):
+            btn_class = "btn-cyan"
+        elif any(x in lower_label for x in ["login", "watch", "gdflix", "stream"]):
+            btn_class = "btn-green"
+            
+        buttons_html += f'<a href="{url}" class="fdl-btn {btn_class}" target="_blank">{label}</a>\n'
+
+    html = f"""
+    {css}
+    <div class="fdl-container">
+        <div class="fdl-title">{title}</div>
+        
+        <div class="fdl-btn-container">
+            {buttons_html}
+        </div>
+        
+        <div class="fdl-footer">
+            Thank you for using our site — enjoy ultra-fast downloads Speed - Powered by FilesDL!.<br>
+            If one server is busy or slow, simply switch to another with one click for Fast speed :)
+        </div>
+    </div>
+    """
+    return html
+
 def generate_image(data: dict):
     try:
         poster_bytes = None
@@ -400,30 +457,29 @@ async def start_command(client, message: Message):
         f"To get started, go to any chat, type my username (`@{bot_username}`) and then a movie name.\n"
         f"Example: `@{bot_username} Inception`\n\n"
         "**Available Commands:**\n"
+        "`/filedl` - 🆕 Create FilesDL Style Button Post\n"
         "`/poster` - Get HD posters for any movie/series.\n"
         "`/setchannel` - Set your main channel for posting (public/private).\n"
         "`/manual` - Add content details manually.\n"
         "`/setadlink` - Update your personal advertisement link.\n\n"
         "**Auto-Post Commands:**\n"
-        "`/setpromochannel` - Set the channel for auto-posts (public/private).\n"
+        "`/setpromochannel` - Set the channel for auto-posts.\n"
         "`/setpromoname` - Set your brand name for auto-posts.\n"
-        "`/setwatchlink` - Set the 'Watch' button URL.\n"
-        "`/setdownloadlink` - Set the 'How to Download' button URL.\n"
-        "`/setrequestlink` - Set the 'Request' button URL."
+        "`/setwatchlink`, `/setdownloadlink`, `/setrequestlink` - Set buttons."
     )
 
 @bot.on_message(filters.command("poster") & filters.private)
 async def poster_command(client, message: Message):
     if len(message.command) < 2:
-        await message.reply_text("⚠️ **ব্যবহার:** `/poster <movie or series name>`")
+        await message.reply_text("⚠️ **Usage:** `/poster <movie or series name>`")
         return
 
     query = message.text.split(" ", 1)[1]
-    processing_msg = await message.reply_text(f"🔎 **{query}**-এর পোস্টার খোঁজা হচ্ছে...")
+    processing_msg = await message.reply_text(f"🔎 **Searching {query}...**")
 
     results = search_tmdb(query)
     if not results:
-        await processing_msg.edit_text(f"❌ দুঃখিত, **{query}** নামের কোনো মুভি বা সিরিজ খুঁজে পাওয়া যায়নি।")
+        await processing_msg.edit_text(f"❌ No results found for **{query}**.")
         return
 
     top_result = results[0]
@@ -453,7 +509,7 @@ async def poster_command(client, message: Message):
             logger.error(f"Failed to send landscape poster: {e}")
 
     if not sent_any:
-        await message.reply_text(f"দুঃখিত, **{title} ({year})**-এর জন্য কোনো পোস্টার খুঁজে পাওয়া যায়নি।")
+        await message.reply_text(f"Sorry, no valid images found for **{title} ({year})**.")
 
 @bot.on_message(filters.command("setchannel") & filters.private)
 async def set_channel_command(_, message: Message):
@@ -467,17 +523,13 @@ async def set_channel_command(_, message: Message):
             try:
                 target_channel = int(channel_input)
             except ValueError:
-                await message.reply_text(
-                    "⚠️ **অবৈধ ফর্ম্যাট!**\n\n"
-                    "পাবলিক চ্যানেলের জন্য `/setchannel @yourchannel` ব্যবহার করুন অথবা\n"
-                    "প্রাইভেট চ্যানেলের জন্য `/setchannel -100123456789` ব্যবহার করুন।"
-                )
+                await message.reply_text("⚠️ Invalid ID/Username format.")
                 return
         
         user_channels[message.from_user.id] = target_channel
-        await message.reply_text(f"✅ প্রধান চ্যানেল সফলভাবে সেট করা হয়েছে: `{target_channel}`.")
+        await message.reply_text(f"✅ Main channel set to: `{target_channel}`.")
     else:
-        await message.reply_text("⚠️ **ব্যবহার:** `/setchannel <@username অথবা চ্যাট আইডি>`")
+        await message.reply_text("⚠️ **Usage:** `/setchannel <@username or ID>`")
 
 @bot.on_message(filters.command("cancel") & filters.private)
 async def cancel_command(_, message: Message):
@@ -503,6 +555,98 @@ async def set_ad_link_command(_, message: Message):
     else:
         await message.reply_text("⚠️ **Usage:** `/setadlink https://your-ad-link.com`")
 
+# ---- NEW FILEDL COMMAND HANDLERS ----
+@bot.on_message(filters.command("filedl") & filters.private)
+async def filedl_command(client, message: Message):
+    user_id = message.from_user.id
+    user_conversations.pop(user_id, None) # Clear old session
+    
+    # Initialize list for links
+    user_conversations[user_id] = {
+        "state": "filedl_wait_title", 
+        "data": {"links": []} 
+    }
+    
+    await message.reply_text(
+        "📂 **FilesDL Post Creator**\n\n"
+        "Please enter the **Title** of the movie/post first.\n"
+        "Example: `Kaalapatthar (2024) 720p`"
+    )
+
+async def filedl_title_handler(client, message: Message):
+    user_id = message.from_user.id
+    title = message.text.strip()
+    
+    user_conversations[user_id]["data"]["title"] = title
+    user_conversations[user_id]["state"] = "filedl_wait_loop"
+    
+    await message.reply_text(
+        f"✅ Title set: **{title}**\n\n"
+        "🔗 **Now start sending buttons & links.**\n"
+        "Format: `Button Name - Link URL`\n\n"
+        "Example:\n`Direct Download - https://example.com`\n"
+        "`Watch Online - https://stream.com`\n\n"
+        "⚠️ **When you are done, type `DONE` or `FINISH`.**"
+    )
+
+async def filedl_loop_handler(client, message: Message):
+    user_id = message.from_user.id
+    text = message.text.strip()
+    
+    # Check if user wants to finish
+    if text.upper() in ["DONE", "FINISH", "OK", "END"]:
+        data = user_conversations[user_id]["data"]
+        if not data["links"]:
+            await message.reply_text("❌ You haven't added any links yet. Add at least one.")
+            return
+            
+        # Generate HTML
+        final_html = generate_filedl_html(data["title"], data["links"])
+        
+        # Send File
+        file_bytes = io.BytesIO(final_html.encode('utf-8'))
+        file_bytes.name = "filesdl_code.html"
+        
+        await message.reply_document(
+            document=file_bytes,
+            caption=f"✅ **Generated Successfully!**\nTotal Buttons: {len(data['links'])}\n\nUpload this to Blogger HTML view."
+        )
+        
+        # End Session
+        user_conversations.pop(user_id, None)
+        return
+
+    # Process Links (Support multiple lines at once)
+    added_count = 0
+    lines = text.split('\n')
+    
+    for line in lines:
+        if ' - ' in line: # Check separator
+            try:
+                label, url = line.split(' - ', 1)
+                label = label.strip()
+                url = url.strip()
+                
+                if url.startswith("http"):
+                    user_conversations[user_id]["data"]["links"].append({"label": label, "url": url})
+                    added_count += 1
+            except ValueError:
+                continue
+
+    if added_count > 0:
+        total = len(user_conversations[user_id]["data"]["links"])
+        await message.reply_text(
+            f"✅ **{added_count} Link(s) Added.**\n"
+            f"Total Buttons: {total}\n\n"
+            "👉 Send more links, or type **DONE** to finish."
+        )
+    else:
+        await message.reply_text(
+            "⚠️ **Invalid Format!**\n"
+            "Please use: `Button Name - https://link.com`\n"
+            "Or type `DONE` to finish."
+        )
+
 # ---- CHANNEL POST CONFIGURATION COMMANDS ----
 def get_user_promo_config(user_id: int):
     if user_id not in user_promo_config:
@@ -523,18 +667,14 @@ async def set_promo_channel_command(_, message: Message):
             try:
                 target_channel = int(channel_input)
             except ValueError:
-                await message.reply_text(
-                    "⚠️ **অবৈধ ফর্ম্যাট!**\n\n"
-                    "পাবলিক চ্যানেলের জন্য `/setpromochannel @yourchannel` ব্যবহার করুন অথবা\n"
-                    "প্রাইভেট চ্যানেলের জন্য `/setpromochannel -100123456789` ব্যবহার করুন।"
-                )
+                await message.reply_text("⚠️ Invalid format. Use @channel or ID.")
                 return
         
         config["channel"] = target_channel
         save_promo_config()
-        await message.reply_text(f"✅ অটো-পোস্ট চ্যানেল সেট করা হয়েছে: `{config['channel']}`.")
+        await message.reply_text(f"✅ Promo channel set to: `{config['channel']}`.")
     else:
-        await message.reply_text("⚠️ **ব্যবহার:** `/setpromochannel <@username অথবা চ্যাট আইডি>`")
+        await message.reply_text("⚠️ **Usage:** `/setpromochannel <@username or ID>`")
 
 @bot.on_message(filters.command("setpromoname") & filters.private)
 async def set_promo_name_command(_, message: Message):
@@ -627,7 +767,7 @@ async def details_command_handler(client, message: Message):
     filters.text & 
     filters.private & 
     ~filters.command([
-        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details",
+        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details", "filedl",
         "setpromochannel", "setpromoname", "setwatchlink", "setdownloadlink", "setrequestlink"
     ])
 )
@@ -635,6 +775,16 @@ async def conversation_text_handler(client, message: Message):
     user_id = message.from_user.id
     if convo := user_conversations.get(user_id):
         state = convo.get("state")
+        
+        # --- FileDL Handlers ---
+        if state == "filedl_wait_title":
+            await filedl_title_handler(client, message)
+            return
+        elif state == "filedl_wait_loop":
+            await filedl_loop_handler(client, message)
+            return
+        # -----------------------
+
         if state and state != "done":
             handlers = {
                 "manual_wait_title": manual_conversation_handler, "manual_wait_year": manual_conversation_handler,
@@ -736,7 +886,7 @@ async def manual_conversation_handler(_, message: Message):
             await message.reply_text(f"✅ Poster URL set! Now, enter the language.")
         else: await message.reply_text("⚠️ Invalid URL.")
 
-# ---- AUTOMATED CHANNEL POST FUNCTION (UPDATED) ----
+# ---- AUTOMATED CHANNEL POST FUNCTION ----
 async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
     convo = user_conversations.get(user_id)
     promo_config = user_promo_config.get(user_id)
@@ -751,8 +901,6 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         return
         
     details = convo["details"]
-    
-    # --- নতুন করে তথ্য সংগ্রহ ---
     title = details.get("title") or details.get("name") or "N/A"
     year = (details.get("release_date") or details.get("first_air_date") or "----")[:4]
     language = details.get('custom_language', 'N/A')
@@ -765,22 +913,16 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         minutes = runtime_minutes % 60
         runtime_str = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
 
-    # --- NEW: Logic to get HD Portrait Poster ---
     photo_to_send = None
-    # Priority 1: Manual Poster URL if provided
     if details.get("manual_poster_url"):
         photo_to_send = details["manual_poster_url"]
-    # Priority 2: Original TMDB Poster
     elif details.get("poster_path"):
         photo_to_send = f"https://image.tmdb.org/t/p/original{details['poster_path']}"
-    # Fallback: The wide image generated for the main post
     else:
         photo_to_send = convo.get("generated", {}).get("image")
         if photo_to_send:
             photo_to_send.seek(0)
-    # --- END NEW LOGIC ---
 
-    # --- নতুন ক্যাপশন ফরম্যাট ---
     caption = (
         f"🎬 **{title} ({year})**\n\n"
         f"**🎭 Genres:** {', '.join([g['name'] for g in details.get('genres', [])] or ['N/A'])}\n"
@@ -858,16 +1000,16 @@ async def final_action_callback(client, cb):
     generated = convo["generated"]
     
     if action == "get_html":
-        await cb.answer("🔗 আপনার কোডের জন্য একটি লিংক তৈরি করা হচ্ছে...", show_alert=False)
+        await cb.answer("🔗 Generating link...", show_alert=False)
         html_code = generated.get("html", "")
         try:
             response = requests.post("https://dpaste.com/api/", data={"content": html_code, "syntax": "html"})
             response.raise_for_status()
-            await cb.message.reply_text("✅ **আপনার ব্লগার কোড প্রস্তুত!**",
-                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 কোড কপি করতে এখানে ক্লিক করুন", url=response.text.strip())]]))
+            await cb.message.reply_text("✅ **Blogger Code Ready!**",
+                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Copy Code Here", url=response.text.strip())]]))
         except requests.exceptions.RequestException as e:
             logger.error(f"Error creating paste link: {e}")
-            await cb.message.reply_text("⚠️ **দুঃখিত!** কোডটির জন্য লিংক তৈরি করা সম্ভব হয়নি। ফাইল হিসেবে পাঠানো হলো।")
+            await cb.message.reply_text("⚠️ **Error!** Sending as file instead.")
             file_bytes = io.BytesIO(html_code.encode('utf-8'))
             file_bytes.name = f"{(convo['details'].get('title') or 'post').replace(' ', '_')}.html"
             await client.send_document(cb.message.chat.id, document=file_bytes)
