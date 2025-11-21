@@ -94,7 +94,7 @@ def load_promo_config():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Movie/Series Bot with FileDL is running!"
+    return "✅ Final Movie/Series Bot with Step-by-Step FileDL is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -555,13 +555,13 @@ async def set_ad_link_command(_, message: Message):
     else:
         await message.reply_text("⚠️ **Usage:** `/setadlink https://your-ad-link.com`")
 
-# ---- NEW FILEDL COMMAND HANDLERS ----
+# ---- NEW FILEDL COMMAND HANDLERS (STEP-BY-STEP) ----
 @bot.on_message(filters.command("filedl") & filters.private)
 async def filedl_command(client, message: Message):
     user_id = message.from_user.id
     user_conversations.pop(user_id, None) # Clear old session
     
-    # Initialize list for links
+    # Initialize session
     user_conversations[user_id] = {
         "state": "filedl_wait_title", 
         "data": {"links": []} 
@@ -569,8 +569,7 @@ async def filedl_command(client, message: Message):
     
     await message.reply_text(
         "📂 **FilesDL Post Creator**\n\n"
-        "Please enter the **Title** of the movie/post first.\n"
-        "Example: `Kaalapatthar (2024) 720p`"
+        "Please send the **Title** of the post."
     )
 
 async def filedl_title_handler(client, message: Message):
@@ -578,26 +577,23 @@ async def filedl_title_handler(client, message: Message):
     title = message.text.strip()
     
     user_conversations[user_id]["data"]["title"] = title
-    user_conversations[user_id]["state"] = "filedl_wait_loop"
+    user_conversations[user_id]["state"] = "filedl_wait_btn_name"
     
     await message.reply_text(
         f"✅ Title set: **{title}**\n\n"
-        "🔗 **Now start sending buttons & links.**\n"
-        "Format: `Button Name - Link URL`\n\n"
-        "Example:\n`Direct Download - https://example.com`\n"
-        "`Watch Online - https://stream.com`\n\n"
-        "⚠️ **When you are done, type `DONE` or `FINISH`.**"
+        "👉 Now enter **Button 1 Name**\n"
+        "(e.g., `Download 720p` or `Watch Online`)"
     )
 
-async def filedl_loop_handler(client, message: Message):
+async def filedl_name_handler(client, message: Message):
     user_id = message.from_user.id
     text = message.text.strip()
     
     # Check if user wants to finish
-    if text.upper() in ["DONE", "FINISH", "OK", "END"]:
+    if text.upper() in ["DONE", "FINISH", "OK", "END", "SES"]:
         data = user_conversations[user_id]["data"]
         if not data["links"]:
-            await message.reply_text("❌ You haven't added any links yet. Add at least one.")
+            await message.reply_text("❌ No buttons added. Add at least one.")
             return
             
         # Generate HTML
@@ -616,36 +612,38 @@ async def filedl_loop_handler(client, message: Message):
         user_conversations.pop(user_id, None)
         return
 
-    # Process Links (Support multiple lines at once)
-    added_count = 0
-    lines = text.split('\n')
+    # Save name temporarily
+    user_conversations[user_id]["temp_btn_name"] = text
+    user_conversations[user_id]["state"] = "filedl_wait_btn_url"
     
-    for line in lines:
-        if ' - ' in line: # Check separator
-            try:
-                label, url = line.split(' - ', 1)
-                label = label.strip()
-                url = url.strip()
-                
-                if url.startswith("http"):
-                    user_conversations[user_id]["data"]["links"].append({"label": label, "url": url})
-                    added_count += 1
-            except ValueError:
-                continue
+    await message.reply_text(
+        f"📝 Button: **{text}**\n\n"
+        f"🔗 Now send the **URL** for this button."
+    )
 
-    if added_count > 0:
-        total = len(user_conversations[user_id]["data"]["links"])
-        await message.reply_text(
-            f"✅ **{added_count} Link(s) Added.**\n"
-            f"Total Buttons: {total}\n\n"
-            "👉 Send more links, or type **DONE** to finish."
-        )
-    else:
-        await message.reply_text(
-            "⚠️ **Invalid Format!**\n"
-            "Please use: `Button Name - https://link.com`\n"
-            "Or type `DONE` to finish."
-        )
+async def filedl_url_handler(client, message: Message):
+    user_id = message.from_user.id
+    url = message.text.strip()
+    
+    if not (url.startswith("http://") or url.startswith("https://")):
+        await message.reply_text("⚠️ Invalid URL. Must start with http or https. Try again.")
+        return
+
+    # Add to list
+    btn_name = user_conversations[user_id]["temp_btn_name"]
+    user_conversations[user_id]["data"]["links"].append({"label": btn_name, "url": url})
+    
+    # Reset temp and go back to name input
+    del user_conversations[user_id]["temp_btn_name"]
+    user_conversations[user_id]["state"] = "filedl_wait_btn_name"
+    
+    total = len(user_conversations[user_id]["data"]["links"])
+    
+    await message.reply_text(
+        f"✅ **Button Added!** (Total: {total})\n\n"
+        "👉 Enter **Next Button Name**.\n"
+        "OR type **DONE** to finish."
+    )
 
 # ---- CHANNEL POST CONFIGURATION COMMANDS ----
 def get_user_promo_config(user_id: int):
@@ -762,7 +760,7 @@ async def details_command_handler(client, message: Message):
     user_conversations[user_id] = {"details": details, "links": [], "state": "wait_custom_language"}
     await processing_msg.edit_text("✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`).")
 
-# ---- CONVERSATION HANDLERS ----
+# ---- CONVERSATION HANDLERS (MAIN ROUTER) ----
 @bot.on_message(
     filters.text & 
     filters.private & 
@@ -776,14 +774,17 @@ async def conversation_text_handler(client, message: Message):
     if convo := user_conversations.get(user_id):
         state = convo.get("state")
         
-        # --- FileDL Handlers ---
+        # --- FileDL Handlers (Step-by-Step) ---
         if state == "filedl_wait_title":
             await filedl_title_handler(client, message)
             return
-        elif state == "filedl_wait_loop":
-            await filedl_loop_handler(client, message)
+        elif state == "filedl_wait_btn_name":
+            await filedl_name_handler(client, message)
             return
-        # -----------------------
+        elif state == "filedl_wait_btn_url":
+            await filedl_url_handler(client, message)
+            return
+        # --------------------------------------
 
         if state and state != "done":
             handlers = {
