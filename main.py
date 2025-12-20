@@ -47,15 +47,22 @@ except (ValueError, TypeError):
 # ---- GLOBAL VARIABLES for state management ----
 user_conversations = {}
 user_channels = {}
+
+# --- AD LINK CONFIGURATION (UPDATED FOR MULTI-LINK) ---
 USER_AD_LINKS_FILE = "user_ad_links.json"
 DEFAULT_AD_LINK = "https://www.google.com"
 user_ad_links = {}
+
+# --- STEP CONFIGURATION (NEW) ---
+USER_STEPS_FILE = "user_steps_config.json"
+user_steps_config = {}
 
 # --- CHANNEL POST CONFIGURATION ---
 USER_PROMO_CONFIG_FILE = "user_promo_config.json"
 user_promo_config = {} 
 
 # ---- FUNCTIONS to save and load user-specific data ----
+
 def save_user_ad_links():
     try:
         with open(USER_AD_LINKS_FILE, "w") as f:
@@ -68,10 +75,28 @@ def load_user_ad_links():
     if os.path.exists(USER_AD_LINKS_FILE):
         try:
             with open(USER_AD_LINKS_FILE, "r") as f:
+                # Load data. If older version (string), conversion happens during usage.
                 user_ad_links = {int(k): v for k, v in json.load(f).items()}
                 logger.info("✅ User ad links loaded.")
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading user ad links: {e}")
+
+def save_steps_config():
+    try:
+        with open(USER_STEPS_FILE, "w") as f:
+            json.dump(user_steps_config, f, indent=4)
+    except IOError as e:
+        logger.warning(f"⚠️ Error saving steps config: {e}")
+
+def load_steps_config():
+    global user_steps_config
+    if os.path.exists(USER_STEPS_FILE):
+        try:
+            with open(USER_STEPS_FILE, "r") as f:
+                user_steps_config = {int(k): v for k, v in json.load(f).items()}
+                logger.info("✅ User steps config loaded.")
+        except (IOError, json.JSONDecodeError) as e:
+            logger.warning(f"⚠️ Error loading steps config: {e}")
 
 def save_promo_config():
     try:
@@ -94,7 +119,7 @@ def load_promo_config():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Text Code Version) is running!"
+    return "✅ Final Bot (Multi-Step & Multi-Link) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -148,30 +173,20 @@ def get_tmdb_details(media_type: str, media_id: int):
         return None
 
 def extract_tmdb_id(query: str):
-    """
-    Extracts media type and ID from TMDB URL or converts IMDb ID/Link to TMDB ID.
-    Updated to handle full IMDb URLs.
-    """
     query = query.strip()
-    
-    # 1. Check for TMDB URL (e.g., https://www.themoviedb.org/movie/550)
     tmdb_url_pattern = r"themoviedb\.org/(movie|tv)/(\d+)"
     match = re.search(tmdb_url_pattern, query)
     if match:
         return match.group(1), int(match.group(2))
 
-    # 2. Check for IMDb ID (Matches "tt1234567" inside any string or URL)
-    # The regex r"(tt\d+)" finds 'tt' followed by digits anywhere in the text
     imdb_match = re.search(r"(tt\d+)", query)
-    
     if imdb_match:
-        imdb_id = imdb_match.group(1) # Extracted ID like tt8178634
+        imdb_id = imdb_match.group(1)
         try:
             find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={TMDB_API_KEY}&external_source=imdb_id"
             response = requests.get(find_url, timeout=10)
             response.raise_for_status()
             data = response.json()
-            
             if data.get("movie_results"):
                 return "movie", data["movie_results"][0]["id"]
             elif data.get("tv_results"):
@@ -180,7 +195,6 @@ def extract_tmdb_id(query: str):
             logger.error(f"Error finding IMDb ID: {e}")
             return None, None
 
-    # 3. Check for direct ID usage (e.g., movie/550)
     if "/" in query:
         parts = query.split("/")
         if len(parts) == 2 and parts[0] in ["movie", "tv"] and parts[1].isdigit():
@@ -225,8 +239,23 @@ def generate_formatted_caption(data: dict):
         
     return caption_text
 
+# --- UPDATED GENERATE_HTML (MULTI-LINK + MULTI-STEP) ---
 def generate_html(data: dict, links: list, user_id: int):
-    ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
+    # 1. Load Ad Links (List)
+    raw_ad_links = user_ad_links.get(user_id, [DEFAULT_AD_LINK])
+    
+    # Handle backward compatibility if it was saved as a string previously
+    if isinstance(raw_ad_links, str):
+        ad_links_list = [raw_ad_links]
+    else:
+        ad_links_list = raw_ad_links
+
+    # Convert Python List to JSON String for JS injection
+    js_ad_links = json.dumps(ad_links_list)
+
+    # 2. Load Steps Config
+    TOTAL_STEPS = user_steps_config.get(user_id, 1) # Default to 1 step
+    
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
     TELEGRAM_LINK = "https://t.me/YourChannelLink"
@@ -263,7 +292,7 @@ def generate_html(data: dict, links: list, user_id: int):
     for link in links:
         download_blocks_html += f"""
         <div class="dl-download-block">
-            <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
+            <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-current-step="0">⬇️ {link['label']}</button>
             <div class="dl-timer-display"></div>
             <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get {link['label']}</a>
         </div>
@@ -299,9 +328,9 @@ def generate_html(data: dict, links: list, user_id: int):
         <div class="dl-post-container">
             <div class="dl-instruction-box">
                 <h2>🎬 ডাউনলোড করার নিয়মাবলী</h2>
-                <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
-                <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
-                <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
+                <p><strong>Total Steps: {TOTAL_STEPS}</strong></p>
+                <p>1. বিজ্ঞাপনে ক্লিক করুন এবং অপেক্ষা করুন।</p>
+                <p>2. টাইমার শেষ হলে পরবর্তী ধাপে যান।</p>
             </div>
             {download_blocks_html}
             <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
@@ -310,38 +339,62 @@ def generate_html(data: dict, links: list, user_id: int):
     </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {{
-        const AD_LINK = "{ad_link}";
+        // AD_LINKS will be an array like ["url1", "url2", "url3"]
+        const AD_LINKS = {js_ad_links}; 
+        const MAX_STEPS = {TOTAL_STEPS};
         const TIMER_SECONDS = {TIMER_SECONDS};
+
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
-                let clickCount = parseInt(button.dataset.clickCount);
+                let currentStep = parseInt(button.dataset.currentStep);
+                
+                // --- MULTI LINK LOGIC ---
+                // Cycle through links: Step 0 -> Link 0, Step 1 -> Link 1, Step 3 -> Link 0 (if only 3 links)
+                let linkToOpen = AD_LINKS[currentStep % AD_LINKS.length];
+                
+                if(linkToOpen) {{
+                    window.open(linkToOpen, "_blank");
+                }} else {{
+                    console.log("No ad link found, check configuration.");
+                }}
+                // ------------------------
+
                 const block = button.parentElement;
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
                 const downloadUrl = button.dataset.url;
-                if (clickCount === 0) {{
-                    window.open(AD_LINK, "_blank");
-                    button.innerText = "Click Again to Start Timer";
-                    button.dataset.clickCount = 1;
-                }} else if (clickCount === 1) {{
-                    button.style.display = 'none';
-                    timerDisplay.style.display = 'block';
-                    realDownloadLink.href = downloadUrl;
-                    let timeLeft = TIMER_SECONDS;
-                    timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
-                    const timer = setInterval(() => {{
-                        timeLeft--;
-                        timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
-                        if (timeLeft <= 0) {{
-                            clearInterval(timer);
-                            timerDisplay.style.display = 'none';
+
+                button.style.display = 'none';
+                timerDisplay.style.display = 'block';
+                
+                let timeLeft = TIMER_SECONDS;
+                timerDisplay.innerText = `Please Wait: ${{timeLeft}}s (Step ${{currentStep + 1}}/${{MAX_STEPS}})`;
+
+                const timer = setInterval(() => {{
+                    timeLeft--;
+                    timerDisplay.innerText = `Please Wait: ${{timeLeft}}s (Step ${{currentStep + 1}}/${{MAX_STEPS}})`;
+
+                    if (timeLeft <= 0) {{
+                        clearInterval(timer);
+                        timerDisplay.style.display = 'none';
+                        
+                        // Check if total steps are completed
+                        if (currentStep + 1 >= MAX_STEPS) {{
+                            // Finished! Show real link
+                            realDownloadLink.href = downloadUrl;
                             realDownloadLink.style.display = 'block';
+                            
                             const counter = document.getElementById('download-counter');
                             if(counter) {{ counter.innerText = parseInt(counter.innerText) + 1; }}
+                        }} else {{
+                            // Not finished, prepare for next step
+                            currentStep++;
+                            button.dataset.currentStep = currentStep;
+                            button.innerText = `🔄 Next Step (${{currentStep + 1}}/${{MAX_STEPS}}) - Click Here`;
+                            button.style.display = 'block';
                         }}
-                    }}, 1000);
-                    button.dataset.clickCount = 2;
-                }}
+                    }}
+                }}, 1000);
             }};
         }});
     }});
@@ -352,7 +405,6 @@ def generate_html(data: dict, links: list, user_id: int):
     return final_html
 
 def generate_filedl_html(title, links_list):
-    # CSS Styles - Simplified for Uniformity
     css = """
     <style>
         .fdl-container { font-family: 'Segoe UI', sans-serif; text-align: center; max-width: 600px; margin: 0 auto; padding: 20px; background: #fff; }
@@ -456,22 +508,18 @@ def generate_image(data: dict):
 @bot.on_message(filters.command("start") & filters.private)
 async def start_command(client, message: Message):
     user_conversations.pop(message.from_user.id, None)
-    bot_username = (await client.get_me()).username
     await message.reply_text(
         f"👋 **Welcome to the Movie & Series Bot!**\n\n"
-        f"**New:** Use `/post` to create content easily!\n\n"
         f"**Commands:**\n"
-        f"1️⃣ `/post <Name>` - Search by Name (e.g. `/post Inception`)\n"
-        f"2️⃣ `/post <Link>` - By TMDB Link (e.g. `/post https://...`)\n"
-        f"3️⃣ `/post <IMDb>` - By IMDb Link/ID (e.g. `/post https://imdb...`)\n\n"
+        f"1️⃣ `/post <Name>` - Search by Name\n"
+        f"2️⃣ `/post <Link>` - By TMDB/IMDb Link\n\n"
+        "**⚙️ Configuration:**\n"
+        "`/setsteps <1-5>` - Set download steps.\n"
+        "`/setadlink <slot> <url>` - Set ad links (Slot 1-4).\n"
+        "   Example: `/setadlink 1 https://google.com`\n\n"
         "**Other Commands:**\n"
-        "`/filedl` - 🆕 Create FilesDL Style Button Post\n"
-        "`/poster` - Get HD posters.\n"
-        "`/setchannel` - Set main channel.\n"
-        "`/manual` - Add content manually.\n"
-        "`/setadlink` - Update ad link.\n\n"
-        "**Auto-Post Config:**\n"
-        "`/setpromochannel`, `/setpromoname`, `/setwatchlink`..."
+        "`/filedl`, `/poster`, `/setchannel`, `/manual`\n"
+        "`/setpromochannel`... (Auto-Post)"
     )
 
 @bot.on_message(filters.command("poster") & filters.private)
@@ -551,15 +599,68 @@ async def manual_add_command(_, message: Message):
     user_conversations[user_id] = {"state": "manual_wait_title", "details": {}, "links": []}
     await message.reply_text("🎬 **Manual Content Entry**\n\nFirst, please send the **Title**.")
 
+# --- NEW: SET STEPS COMMAND ---
+@bot.on_message(filters.command("setsteps") & filters.private)
+async def set_steps_command(_, message: Message):
+    user_id = message.from_user.id
+    if len(message.command) > 1:
+        try:
+            steps = int(message.command[1])
+            if 1 <= steps <= 5:
+                user_steps_config[user_id] = steps
+                save_steps_config()
+                await message.reply_text(f"✅ **Success!** Download steps set to: **{steps}**")
+            else:
+                await message.reply_text("⚠️ Please choose between **1 and 5**.")
+        except ValueError:
+            await message.reply_text("⚠️ Invalid number.")
+    else:
+        current = user_steps_config.get(user_id, 1)
+        await message.reply_text(f"🔢 **Current Steps:** `{current}`\n\nUsage: `/setsteps 3`")
+
+# --- UPDATED: SET AD LINK COMMAND (SLOT BASED) ---
 @bot.on_message(filters.command("setadlink") & filters.private)
 async def set_ad_link_command(_, message: Message):
     user_id = message.from_user.id
-    if len(message.command) > 1 and (message.command[1].startswith("http://") or message.command[1].startswith("https://")):
-        user_ad_links[user_id] = message.command[1]
-        save_user_ad_links()
-        await message.reply_text(f"✅ **Ad Link Updated!**")
+    
+    # Initialize with default if empty or convert old string format
+    if user_id not in user_ad_links or isinstance(user_ad_links[user_id], str):
+        user_ad_links[user_id] = [DEFAULT_AD_LINK]
+
+    if len(message.command) >= 3:
+        try:
+            slot = int(message.command[1]) # 1, 2, 3, or 4
+            link = message.command[2]
+
+            if not (1 <= slot <= 4):
+                await message.reply_text("⚠️ **Slot must be between 1 and 4.**")
+                return
+            
+            if not (link.startswith("http://") or link.startswith("https://")):
+                await message.reply_text("⚠️ **Invalid Link.** Must start with http/https.")
+                return
+
+            # Ensure list has enough slots
+            current_links = user_ad_links[user_id]
+            while len(current_links) < slot:
+                current_links.append(DEFAULT_AD_LINK)
+            
+            # Set link at index (slot - 1)
+            current_links[slot-1] = link
+            user_ad_links[user_id] = current_links
+            
+            save_user_ad_links()
+            
+            links_preview = "\n".join([f"Slot {i+1}: {l}" for i, l in enumerate(current_links)])
+            await message.reply_text(f"✅ **Ad Link Set for Slot {slot}!**\n\n**Current Config:**\n{links_preview}")
+
+        except ValueError:
+            await message.reply_text("⚠️ **Usage:** `/setadlink <number> <url>`\nExample: `/setadlink 1 https://google.com`")
     else:
-        await message.reply_text("⚠️ **Usage:** `/setadlink https://your-ad-link.com`")
+        current_links = user_ad_links.get(user_id, [DEFAULT_AD_LINK])
+        if isinstance(current_links, str): current_links = [current_links]
+        links_preview = "\n".join([f"Slot {i+1}: {l}" for i, l in enumerate(current_links)])
+        await message.reply_text(f"⚙️ **Current Ad Links:**\n\n{links_preview}\n\n⚠️ **Usage:** `/setadlink 1 https://link1.com`")
 
 # ---- NEW FILEDL COMMAND HANDLERS (STEP-BY-STEP) ----
 @bot.on_message(filters.command("filedl") & filters.private)
@@ -861,7 +962,7 @@ async def selection_callback(client, cb):
     filters.text & 
     filters.private & 
     ~filters.command([
-        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details", "filedl", "post",
+        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details", "filedl", "post", "setsteps",
         "setpromochannel", "setpromoname", "setwatchlink", "setdownloadlink", "setrequestlink"
     ])
 )
@@ -1133,6 +1234,7 @@ if __name__ == "__main__":
     logger.info("🚀 Starting the bot...")
     load_user_ad_links()
     load_promo_config()
+    load_steps_config() # NEW CONFIG LOADER
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
