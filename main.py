@@ -149,7 +149,8 @@ def get_tmdb_details(media_type: str, media_id: int):
 
 def extract_tmdb_id(query: str):
     """
-    Extracts media type and ID from TMDB URL or converts IMDb ID to TMDB ID.
+    Extracts media type and ID from TMDB URL or converts IMDb ID/Link to TMDB ID.
+    Updated to handle full IMDb URLs.
     """
     query = query.strip()
     
@@ -159,10 +160,14 @@ def extract_tmdb_id(query: str):
     if match:
         return match.group(1), int(match.group(2))
 
-    # 2. Check for IMDb ID (e.g., tt0137523)
-    if re.match(r"^tt\d+$", query):
+    # 2. Check for IMDb ID (Matches "tt1234567" inside any string or URL)
+    # The regex r"(tt\d+)" finds 'tt' followed by digits anywhere in the text
+    imdb_match = re.search(r"(tt\d+)", query)
+    
+    if imdb_match:
+        imdb_id = imdb_match.group(1) # Extracted ID like tt8178634
         try:
-            find_url = f"https://api.themoviedb.org/3/find/{query}?api_key={TMDB_API_KEY}&external_source=imdb_id"
+            find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={TMDB_API_KEY}&external_source=imdb_id"
             response = requests.get(find_url, timeout=10)
             response.raise_for_status()
             data = response.json()
@@ -458,7 +463,7 @@ async def start_command(client, message: Message):
         f"**Commands:**\n"
         f"1️⃣ `/post <Name>` - Search by Name (e.g. `/post Inception`)\n"
         f"2️⃣ `/post <Link>` - By TMDB Link (e.g. `/post https://...`)\n"
-        f"3️⃣ `/post <IMDb>` - By IMDb ID (e.g. `/post tt12345`)\n\n"
+        f"3️⃣ `/post <IMDb>` - By IMDb Link/ID (e.g. `/post https://imdb...`)\n\n"
         "**Other Commands:**\n"
         "`/filedl` - 🆕 Create FilesDL Style Button Post\n"
         "`/poster` - Get HD posters.\n"
@@ -774,7 +779,7 @@ async def post_command_handler(client, message: Message):
         await message.reply_text(
             "⚠️ **Usage:**\n"
             "1️⃣ `/post https://www.themoviedb.org/movie/550` (Link)\n"
-            "2️⃣ `/post tt0137523` (IMDb ID)\n"
+            "2️⃣ `/post https://imdb.com/title/tt0137523` (Link)\n"
             "3️⃣ `/post Inception` (Name Search)"
         )
         return
