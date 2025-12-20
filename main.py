@@ -48,12 +48,12 @@ except (ValueError, TypeError):
 user_conversations = {}
 user_channels = {}
 
-# --- AD LINK CONFIGURATION (UPDATED FOR MULTI-LINK) ---
+# --- AD LINK CONFIGURATION (MULTI-LINK SUPPORT) ---
 USER_AD_LINKS_FILE = "user_ad_links.json"
 DEFAULT_AD_LINK = "https://www.google.com"
 user_ad_links = {}
 
-# --- STEP CONFIGURATION (NEW) ---
+# --- STEP CONFIGURATION (MULTI-STEP SUPPORT) ---
 USER_STEPS_FILE = "user_steps_config.json"
 user_steps_config = {}
 
@@ -75,7 +75,6 @@ def load_user_ad_links():
     if os.path.exists(USER_AD_LINKS_FILE):
         try:
             with open(USER_AD_LINKS_FILE, "r") as f:
-                # Load data. If older version (string), conversion happens during usage.
                 user_ad_links = {int(k): v for k, v in json.load(f).items()}
                 logger.info("✅ User ad links loaded.")
         except (IOError, json.JSONDecodeError) as e:
@@ -119,7 +118,7 @@ def load_promo_config():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Multi-Step & Multi-Link) is running!"
+    return "✅ Final Bot (Menu + Multi-Step) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -244,17 +243,16 @@ def generate_html(data: dict, links: list, user_id: int):
     # 1. Load Ad Links (List)
     raw_ad_links = user_ad_links.get(user_id, [DEFAULT_AD_LINK])
     
-    # Handle backward compatibility if it was saved as a string previously
     if isinstance(raw_ad_links, str):
         ad_links_list = [raw_ad_links]
     else:
         ad_links_list = raw_ad_links
 
-    # Convert Python List to JSON String for JS injection
+    # Convert to JSON for JS
     js_ad_links = json.dumps(ad_links_list)
 
     # 2. Load Steps Config
-    TOTAL_STEPS = user_steps_config.get(user_id, 1) # Default to 1 step
+    TOTAL_STEPS = user_steps_config.get(user_id, 1) 
     
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
@@ -349,7 +347,7 @@ def generate_html(data: dict, links: list, user_id: int):
                 let currentStep = parseInt(button.dataset.currentStep);
                 
                 // --- MULTI LINK LOGIC ---
-                // Cycle through links: Step 0 -> Link 0, Step 1 -> Link 1, Step 3 -> Link 0 (if only 3 links)
+                // Cycle through links
                 let linkToOpen = AD_LINKS[currentStep % AD_LINKS.length];
                 
                 if(linkToOpen) {{
@@ -380,14 +378,12 @@ def generate_html(data: dict, links: list, user_id: int):
                         
                         // Check if total steps are completed
                         if (currentStep + 1 >= MAX_STEPS) {{
-                            // Finished! Show real link
                             realDownloadLink.href = downloadUrl;
                             realDownloadLink.style.display = 'block';
                             
                             const counter = document.getElementById('download-counter');
                             if(counter) {{ counter.innerText = parseInt(counter.innerText) + 1; }}
                         }} else {{
-                            // Not finished, prepare for next step
                             currentStep++;
                             button.dataset.currentStep = currentStep;
                             button.innerText = `🔄 Next Step (${{currentStep + 1}}/${{MAX_STEPS}}) - Click Here`;
@@ -504,23 +500,130 @@ def generate_image(data: dict):
         logger.error(f"Error generating image: {e}")
         return None
 
-# ---- BOT HANDLERS ----
+# ---- BOT HANDLERS & MENU SYSTEM ----
+
 @bot.on_message(filters.command("start") & filters.private)
 async def start_command(client, message: Message):
-    user_conversations.pop(message.from_user.id, None)
-    await message.reply_text(
-        f"👋 **Welcome to the Movie & Series Bot!**\n\n"
-        f"**Commands:**\n"
-        f"1️⃣ `/post <Name>` - Search by Name\n"
-        f"2️⃣ `/post <Link>` - By TMDB/IMDb Link\n\n"
-        "**⚙️ Configuration:**\n"
-        "`/setsteps <1-5>` - Set download steps.\n"
-        "`/setadlink <slot> <url>` - Set ad links (Slot 1-4).\n"
-        "   Example: `/setadlink 1 https://google.com`\n\n"
-        "**Other Commands:**\n"
-        "`/filedl`, `/poster`, `/setchannel`, `/manual`\n"
-        "`/setpromochannel`... (Auto-Post)"
+    user_conversations.pop(message.from_user.id, None) # Clear old session
+    
+    # Dashboard Buttons
+    buttons = [
+        [
+            InlineKeyboardButton("📚 ব্যবহার বিধি (Help)", callback_data="help_menu"),
+            InlineKeyboardButton("⚙️ অ্যাডমিন সেটআপ", callback_data="admin_menu")
+        ],
+        [
+            InlineKeyboardButton("📂 FilesDL গাইড", callback_data="filedl_menu"),
+            InlineKeyboardButton("📢 চ্যানেল সেটআপ", callback_data="channel_menu")
+        ],
+        [
+            InlineKeyboardButton("❌ Close Panel", callback_data="close_menu")
+        ]
+    ]
+    
+    welcome_text = (
+        f"👋 **স্বাগতম {message.from_user.first_name}!**\n\n"
+        "এটি একটি অ্যাডভান্সড **Movie & Series Post Bot**।\n"
+        "এই বটের মাধ্যমে আপনি মাল্টি-স্টেপ এবং মাল্টি-অ্যাড লিংক সহ পোস্ট তৈরি করতে পারবেন।\n\n"
+        "👇 **নিচের বাটনগুলো থেকে বিস্তারিত জেনে নিন:**"
     )
+    
+    await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
+
+# --- DASHBOARD MENU CALLBACKS ---
+@bot.on_callback_query(filters.regex("^(help_menu|admin_menu|filedl_menu|channel_menu|home_menu|close_menu)"))
+async def main_menu_callbacks(client, callback: CallbackQuery):
+    data = callback.data
+    
+    # --- HOME MENU ---
+    if data == "home_menu":
+        buttons = [
+            [InlineKeyboardButton("📚 ব্যবহার বিধি (Help)", callback_data="help_menu"),
+             InlineKeyboardButton("⚙️ অ্যাডমিন সেটআপ", callback_data="admin_menu")],
+            [InlineKeyboardButton("📂 FilesDL গাইড", callback_data="filedl_menu"),
+             InlineKeyboardButton("📢 চ্যানেল সেটআপ", callback_data="channel_menu")],
+            [InlineKeyboardButton("❌ Close", callback_data="close_menu")]
+        ]
+        text = (
+            f"👋 **স্বাগতম {callback.from_user.first_name}!**\n\n"
+            "এটি একটি অ্যাডভান্সড **Movie & Series Post Bot**।\n"
+            "নিচের অপশনগুলো থেকে আপনার প্রয়োজনীয় গাইড দেখে নিন।"
+        )
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+    # --- HELP MENU (POSTING GUIDE) ---
+    elif data == "help_menu":
+        text = (
+            "📚 **পোস্ট তৈরির নিয়মাবলী:**\n\n"
+            "**১. নাম দিয়ে সার্চ:**\n"
+            "`/post Jawan` (মুভির নাম লিখুন)\n\n"
+            "**২. লিংক দিয়ে সার্চ:**\n"
+            "`/post https://...` (TMDB বা IMDb লিংক)\n\n"
+            "**৩. ম্যানুয়াল পোস্ট:**\n"
+            "`/manual` - নিজের মতো করে সব তথ্য দিয়ে পোস্ট সাজাতে।\n\n"
+            "**৪. পোস্টার ডাউনলোড:**\n"
+            "`/poster Jawan` - শুধুমাত্র পোস্টার পেতে।\n\n"
+            "👇 **নিচে ফিরে যাওয়ার বাটন:**"
+        )
+        buttons = [[InlineKeyboardButton("🔙 Back to Home", callback_data="home_menu")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+    # --- ADMIN SETUP (STEPS & ADS) ---
+    elif data == "admin_menu":
+        text = (
+            "⚙️ **অ্যাডমিন এবং ইনকাম সেটআপ:**\n\n"
+            "**🔹 স্টেপ সেট করা:**\n"
+            "কমান্ড: `/setsteps 3`\n"
+            "_(ইউজার ডাউনলোডের আগে কয়টি পেজ দেখবে তা ঠিক করুন। ১-৫ পর্যন্ত দেওয়া যাবে।)_\n\n"
+            "**🔹 অ্যাড লিংক বসানো (Multi-Link):**\n"
+            "১ম ক্লিকের লিংক: `/setadlink 1 https://link1.com`\n"
+            "২য় ক্লিকের লিংক: `/setadlink 2 https://link2.com`\n"
+            "৩য় ক্লিকের লিংক: `/setadlink 3 https://link3.com`\n\n"
+            "✅ *টিপস: যত বেশি স্টেপ এবং লিংক দিবেন, তত বেশি ইনকাম হবে।* \n\n"
+            "👇 **নিচে ফিরে যাওয়ার বাটন:**"
+        )
+        buttons = [[InlineKeyboardButton("🔙 Back to Home", callback_data="home_menu")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+    # --- FILEDL MENU ---
+    elif data == "filedl_menu":
+        text = (
+            "📂 **FilesDL (বাটন পোস্ট) গাইড:**\n\n"
+            "এই ফিচারের মাধ্যমে আপনি সুন্দর বাটন ওয়ালা ডাউনলোড পেজ তৈরি করতে পারবেন।\n\n"
+            "**পদ্ধতি:**\n"
+            "১. `/filedl` কমান্ড দিন।\n"
+            "২. পোস্টের টাইটেল দিন।\n"
+            "৩. বাটনের নাম দিন (যেমন: Download 720p)।\n"
+            "৪. ওই বাটনের লিংক দিন।\n"
+            "৫. সব বাটন দেওয়া হলে `DONE` লিখুন।\n\n"
+            "বট আপনাকে একটি HTML কোড দিবে যা ব্লগারে ব্যবহার করা যাবে।"
+        )
+        buttons = [[InlineKeyboardButton("🔙 Back to Home", callback_data="home_menu")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+    # --- CHANNEL SETUP MENU ---
+    elif data == "channel_menu":
+        text = (
+            "📢 **অটো-পোস্ট এবং চ্যানেল সেটআপ:**\n\n"
+            "**১. মেইন চ্যানেল সেট করা:**\n"
+            "`/setchannel @yourchannel`\n"
+            "_(পোস্ট তৈরির পর 'Post to Channel' বাটনে ক্লিক করলে এখানে যাবে)_\n\n"
+            "**২. প্রোমো চ্যানেল (অটোমেটিক):**\n"
+            "`/setpromochannel @promo_channel`\n"
+            "`/setpromoname YourSiteName`\n"
+            "`/setwatchlink https://site.com`\n"
+            "`/setdownloadlink https://howtodownload.com`\n"
+            "`/setrequestlink https://requestgroup.com`\n\n"
+            "✅ *এগুলো সেট করলে পোস্ট তৈরির সাথে সাথে অটোমেটিক সুন্দর বাটন সহ চ্যানেলে পোস্ট হয়ে যাবে।*"
+        )
+        buttons = [[InlineKeyboardButton("🔙 Back to Home", callback_data="home_menu")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+    # --- CLOSE ---
+    elif data == "close_menu":
+        await callback.message.delete()
+
+# --- OTHER COMMANDS ---
 
 @bot.on_message(filters.command("poster") & filters.private)
 async def poster_command(client, message: Message):
@@ -599,7 +702,7 @@ async def manual_add_command(_, message: Message):
     user_conversations[user_id] = {"state": "manual_wait_title", "details": {}, "links": []}
     await message.reply_text("🎬 **Manual Content Entry**\n\nFirst, please send the **Title**.")
 
-# --- NEW: SET STEPS COMMAND ---
+# --- SET STEPS COMMAND ---
 @bot.on_message(filters.command("setsteps") & filters.private)
 async def set_steps_command(_, message: Message):
     user_id = message.from_user.id
@@ -618,7 +721,7 @@ async def set_steps_command(_, message: Message):
         current = user_steps_config.get(user_id, 1)
         await message.reply_text(f"🔢 **Current Steps:** `{current}`\n\nUsage: `/setsteps 3`")
 
-# --- UPDATED: SET AD LINK COMMAND (SLOT BASED) ---
+# --- SET AD LINK COMMAND (SLOT BASED) ---
 @bot.on_message(filters.command("setadlink") & filters.private)
 async def set_ad_link_command(_, message: Message):
     user_id = message.from_user.id
