@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from pyrogram import Client, filters, enums
 from pyrogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, Message,
-    InlineQuery, InlineQueryResultArticle, InputTextMessageContent
+    InlineQuery, InlineQueryResultArticle, InputTextMessageContent, CallbackQuery
 )
 from flask import Flask
 from dotenv import load_dotenv
@@ -146,6 +146,42 @@ def get_tmdb_details(media_type: str, media_id: int):
     except requests.exceptions.RequestException as e:
         logger.error(f"Error fetching TMDB details: {e}")
         return None
+
+def extract_tmdb_id(query: str):
+    """
+    Extracts media type and ID from TMDB URL or converts IMDb ID to TMDB ID.
+    """
+    query = query.strip()
+    
+    # 1. Check for TMDB URL (e.g., https://www.themoviedb.org/movie/550)
+    tmdb_url_pattern = r"themoviedb\.org/(movie|tv)/(\d+)"
+    match = re.search(tmdb_url_pattern, query)
+    if match:
+        return match.group(1), int(match.group(2))
+
+    # 2. Check for IMDb ID (e.g., tt0137523)
+    if re.match(r"^tt\d+$", query):
+        try:
+            find_url = f"https://api.themoviedb.org/3/find/{query}?api_key={TMDB_API_KEY}&external_source=imdb_id"
+            response = requests.get(find_url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get("movie_results"):
+                return "movie", data["movie_results"][0]["id"]
+            elif data.get("tv_results"):
+                return "tv", data["tv_results"][0]["id"]
+        except Exception as e:
+            logger.error(f"Error finding IMDb ID: {e}")
+            return None, None
+
+    # 3. Check for direct ID usage (e.g., movie/550)
+    if "/" in query:
+        parts = query.split("/")
+        if len(parts) == 2 and parts[0] in ["movie", "tv"] and parts[1].isdigit():
+            return parts[0], int(parts[1])
+
+    return None, None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
@@ -310,7 +346,6 @@ def generate_html(data: dict, links: list, user_id: int):
 """
     return final_html
 
-# ---- UPDATED FUNCTION: Single Color (Uniform) Buttons ----
 def generate_filedl_html(title, links_list):
     # CSS Styles - Simplified for Uniformity
     css = """
@@ -333,7 +368,6 @@ def generate_filedl_html(title, links_list):
     for link_data in links_list:
         label = link_data['label']
         url = link_data['url']
-        # No more color logic check. All buttons get 'fdl-btn' class only.
         buttons_html += f'<a href="{url}" class="fdl-btn" target="_blank">{label}</a>\n'
 
     html = f"""
@@ -420,18 +454,19 @@ async def start_command(client, message: Message):
     bot_username = (await client.get_me()).username
     await message.reply_text(
         f"👋 **Welcome to the Movie & Series Bot!**\n\n"
-        f"To get started, go to any chat, type my username (`@{bot_username}`) and then a movie name.\n"
-        f"Example: `@{bot_username} Inception`\n\n"
-        "**Available Commands:**\n"
+        f"**New:** Use `/post` to create content easily!\n\n"
+        f"**Commands:**\n"
+        f"1️⃣ `/post <Name>` - Search by Name (e.g. `/post Inception`)\n"
+        f"2️⃣ `/post <Link>` - By TMDB Link (e.g. `/post https://...`)\n"
+        f"3️⃣ `/post <IMDb>` - By IMDb ID (e.g. `/post tt12345`)\n\n"
+        "**Other Commands:**\n"
         "`/filedl` - 🆕 Create FilesDL Style Button Post\n"
-        "`/poster` - Get HD posters for any movie/series.\n"
-        "`/setchannel` - Set your main channel for posting (public/private).\n"
-        "`/manual` - Add content details manually.\n"
-        "`/setadlink` - Update your personal advertisement link.\n\n"
-        "**Auto-Post Commands:**\n"
-        "`/setpromochannel` - Set the channel for auto-posts.\n"
-        "`/setpromoname` - Set your brand name for auto-posts.\n"
-        "`/setwatchlink`, `/setdownloadlink`, `/setrequestlink` - Set buttons."
+        "`/poster` - Get HD posters.\n"
+        "`/setchannel` - Set main channel.\n"
+        "`/manual` - Add content manually.\n"
+        "`/setadlink` - Update ad link.\n\n"
+        "**Auto-Post Config:**\n"
+        "`/setpromochannel`, `/setpromoname`, `/setwatchlink`..."
     )
 
 @bot.on_message(filters.command("poster") & filters.private)
@@ -732,12 +767,96 @@ async def details_command_handler(client, message: Message):
     user_conversations[user_id] = {"details": details, "links": [], "state": "wait_custom_language"}
     await processing_msg.edit_text("✅ Details fetched!\n\n**🗣️ Please enter the language** (e.g., `Hindi Dubbed`).")
 
+# ---- NEW: /post COMMAND HANDLER (Detects Link/ID/Name) ----
+@bot.on_message(filters.command("post") & filters.private)
+async def post_command_handler(client, message: Message):
+    if len(message.command) < 2:
+        await message.reply_text(
+            "⚠️ **Usage:**\n"
+            "1️⃣ `/post https://www.themoviedb.org/movie/550` (Link)\n"
+            "2️⃣ `/post tt0137523` (IMDb ID)\n"
+            "3️⃣ `/post Inception` (Name Search)"
+        )
+        return
+
+    query = message.text.split(" ", 1)[1].strip()
+    processing_msg = await message.reply_text(f"🔎 **Processing:** `{query}`...")
+
+    # Step 1: Try to extract ID from Link or IMDb
+    media_type, media_id = extract_tmdb_id(query)
+
+    # Step 2: If found (Link/ID), fetch details directly
+    if media_type and media_id:
+        details = get_tmdb_details(media_type, media_id)
+        if details:
+            user_id = message.from_user.id
+            # Start the conversation flow directly
+            user_conversations[user_id] = {
+                "details": details, 
+                "links": [], 
+                "state": "wait_custom_language"
+            }
+            await processing_msg.edit_text(
+                f"✅ **Found:** {details.get('title') or details.get('name')}\n"
+                "**🗣️ Please enter the Language** (e.g., `English`, `Hindi`)."
+            )
+        else:
+            await processing_msg.edit_text("❌ Failed to fetch details from TMDB.")
+        return
+
+    # Step 3: If not a Link/ID, treat as a Search Name (Existing logic)
+    results = search_tmdb(query)
+    if not results:
+        await processing_msg.edit_text(f"❌ No results found for **{query}**.")
+        return
+
+    # Show Inline buttons for search results
+    buttons = []
+    for r in results:
+        title = r.get("title") or r.get("name")
+        year = (r.get("release_date") or r.get("first_air_date") or "----")[:4]
+        m_type = r.get("media_type")
+        m_id = r.get("id")
+        buttons.append([InlineKeyboardButton(f"{title} ({year}) [{m_type.upper()}]", callback_data=f"sel_{m_type}_{m_id}")])
+    
+    await processing_msg.edit_text("👇 **Select your content:**", reply_markup=InlineKeyboardMarkup(buttons))
+
+# ---- NEW: SELECTION CALLBACK HANDLER (From /post) ----
+@bot.on_callback_query(filters.regex("^sel_"))
+async def selection_callback(client, cb):
+    try:
+        _, media_type, media_id = cb.data.split("_")
+        
+        # Fetch Details
+        await cb.message.edit_text("⏳ Fetching details...")
+        details = get_tmdb_details(media_type, int(media_id))
+        
+        if not details:
+            await cb.message.edit_text("❌ Error fetching details.")
+            return
+
+        user_id = cb.from_user.id
+        # Initialize conversation
+        user_conversations[user_id] = {
+            "details": details, 
+            "links": [], 
+            "state": "wait_custom_language"
+        }
+        
+        await cb.message.edit_text(
+            f"✅ **Selected:** {details.get('title') or details.get('name')}\n\n"
+            "**🗣️ Please enter the Language** (e.g., `Hindi Dubbed`)."
+        )
+    except Exception as e:
+        logger.error(f"Selection error: {e}")
+        await cb.answer("Error occurred.", show_alert=True)
+
 # ---- CONVERSATION HANDLERS (MAIN ROUTER) ----
 @bot.on_message(
     filters.text & 
     filters.private & 
     ~filters.command([
-        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details", "filedl",
+        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details", "filedl", "post",
         "setpromochannel", "setpromoname", "setwatchlink", "setdownloadlink", "setrequestlink"
     ])
 )
@@ -772,8 +891,8 @@ async def conversation_text_handler(client, message: Message):
             else:
                 await message.reply_text("I'm waiting for a specific input. Use /cancel to restart.")
     else:
-        bot_username = (await client.get_me()).username
-        await message.reply_text(f"Please use the inline search: `@{bot_username} Movie Name`")
+        # Fallback suggestion if no conversation is active
+        await message.reply_text("Please use `/post Movie Name` or `/post URL` to start.")
 
 @bot.on_callback_query(filters.regex("^addlink_"))
 async def add_link_callback(client, cb):
