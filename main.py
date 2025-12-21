@@ -47,22 +47,15 @@ except (ValueError, TypeError):
 # ---- GLOBAL VARIABLES for state management ----
 user_conversations = {}
 user_channels = {}
-
-# --- AD LINK CONFIGURATION (MULTI-LINK SUPPORT) ---
 USER_AD_LINKS_FILE = "user_ad_links.json"
 DEFAULT_AD_LINK = "https://www.google.com"
 user_ad_links = {}
-
-# --- STEP CONFIGURATION (MULTI-STEP SUPPORT) ---
-USER_STEPS_FILE = "user_steps_config.json"
-user_steps_config = {}
 
 # --- CHANNEL POST CONFIGURATION ---
 USER_PROMO_CONFIG_FILE = "user_promo_config.json"
 user_promo_config = {} 
 
 # ---- FUNCTIONS to save and load user-specific data ----
-
 def save_user_ad_links():
     try:
         with open(USER_AD_LINKS_FILE, "w") as f:
@@ -79,23 +72,6 @@ def load_user_ad_links():
                 logger.info("✅ User ad links loaded.")
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading user ad links: {e}")
-
-def save_steps_config():
-    try:
-        with open(USER_STEPS_FILE, "w") as f:
-            json.dump(user_steps_config, f, indent=4)
-    except IOError as e:
-        logger.warning(f"⚠️ Error saving steps config: {e}")
-
-def load_steps_config():
-    global user_steps_config
-    if os.path.exists(USER_STEPS_FILE):
-        try:
-            with open(USER_STEPS_FILE, "r") as f:
-                user_steps_config = {int(k): v for k, v in json.load(f).items()}
-                logger.info("✅ User steps config loaded.")
-        except (IOError, json.JSONDecodeError) as e:
-            logger.warning(f"⚠️ Error loading steps config: {e}")
 
 def save_promo_config():
     try:
@@ -118,7 +94,7 @@ def load_promo_config():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Menu + Multi-Step) is running!"
+    return "✅ Final Bot (Text Code Version) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -172,20 +148,30 @@ def get_tmdb_details(media_type: str, media_id: int):
         return None
 
 def extract_tmdb_id(query: str):
+    """
+    Extracts media type and ID from TMDB URL or converts IMDb ID/Link to TMDB ID.
+    Updated to handle full IMDb URLs.
+    """
     query = query.strip()
+    
+    # 1. Check for TMDB URL (e.g., https://www.themoviedb.org/movie/550)
     tmdb_url_pattern = r"themoviedb\.org/(movie|tv)/(\d+)"
     match = re.search(tmdb_url_pattern, query)
     if match:
         return match.group(1), int(match.group(2))
 
+    # 2. Check for IMDb ID (Matches "tt1234567" inside any string or URL)
+    # The regex r"(tt\d+)" finds 'tt' followed by digits anywhere in the text
     imdb_match = re.search(r"(tt\d+)", query)
+    
     if imdb_match:
-        imdb_id = imdb_match.group(1)
+        imdb_id = imdb_match.group(1) # Extracted ID like tt8178634
         try:
             find_url = f"https://api.themoviedb.org/3/find/{imdb_id}?api_key={TMDB_API_KEY}&external_source=imdb_id"
             response = requests.get(find_url, timeout=10)
             response.raise_for_status()
             data = response.json()
+            
             if data.get("movie_results"):
                 return "movie", data["movie_results"][0]["id"]
             elif data.get("tv_results"):
@@ -194,48 +180,13 @@ def extract_tmdb_id(query: str):
             logger.error(f"Error finding IMDb ID: {e}")
             return None, None
 
+    # 3. Check for direct ID usage (e.g., movie/550)
     if "/" in query:
         parts = query.split("/")
         if len(parts) == 2 and parts[0] in ["movie", "tv"] and parts[1].isdigit():
             return parts[0], int(parts[1])
 
     return None, None
-
-# ---- HELPER: ROBUST PASTE FUNCTION ----
-def create_paste_link(content: str):
-    """
-    Creates a paste link. 
-    Priority 1: dpaste.com (Familiar UI, Copy Button)
-    Priority 2: dpaste.org (Almost same UI, Copy Button)
-    """
-    
-    # Attempt 1: dpaste.com (User's Favorite)
-    try:
-        response = requests.post(
-            "https://dpaste.com/api/",
-            data={"content": content, "syntax": "html", "expiry_days": 14},
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'},
-            timeout=10
-        )
-        if response.status_code == 200:
-            return response.text.strip()
-    except Exception as e:
-        logger.warning(f"⚠️ dpaste.com failed: {e}")
-
-    # Attempt 2: dpaste.org (Backup - Has specific 'Copy' button UI)
-    try:
-        response = requests.post(
-            "https://dpaste.org/api/",
-            data={"content": content, "lexer": "html", "format": "url", "expires": 604800},
-            headers={'User-Agent': 'Mozilla/5.0'},
-            timeout=10
-        )
-        if response.status_code == 200:
-            return response.text.strip()
-    except Exception as e:
-        logger.warning(f"⚠️ dpaste.org failed: {e}")
-
-    return None
 
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
@@ -274,22 +225,8 @@ def generate_formatted_caption(data: dict):
         
     return caption_text
 
-# --- UPDATED GENERATE_HTML (MULTI-LINK + MULTI-STEP) ---
 def generate_html(data: dict, links: list, user_id: int):
-    # 1. Load Ad Links (List)
-    raw_ad_links = user_ad_links.get(user_id, [DEFAULT_AD_LINK])
-    
-    if isinstance(raw_ad_links, str):
-        ad_links_list = [raw_ad_links]
-    else:
-        ad_links_list = raw_ad_links
-
-    # Convert to JSON for JS
-    js_ad_links = json.dumps(ad_links_list)
-
-    # 2. Load Steps Config
-    TOTAL_STEPS = user_steps_config.get(user_id, 1) 
-    
+    ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
     TELEGRAM_LINK = "https://t.me/YourChannelLink"
@@ -326,7 +263,7 @@ def generate_html(data: dict, links: list, user_id: int):
     for link in links:
         download_blocks_html += f"""
         <div class="dl-download-block">
-            <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-current-step="0">⬇️ {link['label']}</button>
+            <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
             <div class="dl-timer-display"></div>
             <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get {link['label']}</a>
         </div>
@@ -362,9 +299,9 @@ def generate_html(data: dict, links: list, user_id: int):
         <div class="dl-post-container">
             <div class="dl-instruction-box">
                 <h2>🎬 ডাউনলোড করার নিয়মাবলী</h2>
-                <p><strong>Total Steps: {TOTAL_STEPS}</strong></p>
-                <p>1. বিজ্ঞাপনে ক্লিক করুন এবং অপেক্ষা করুন।</p>
-                <p>2. টাইমার শেষ হলে পরবর্তী ধাপে যান।</p>
+                <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
+                <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
+                <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
             </div>
             {download_blocks_html}
             <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
@@ -373,60 +310,38 @@ def generate_html(data: dict, links: list, user_id: int):
     </div>
     <script>
     document.addEventListener('DOMContentLoaded', function() {{
-        // AD_LINKS will be an array like ["url1", "url2", "url3"]
-        const AD_LINKS = {js_ad_links}; 
-        const MAX_STEPS = {TOTAL_STEPS};
+        const AD_LINK = "{ad_link}";
         const TIMER_SECONDS = {TIMER_SECONDS};
-
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
-                let currentStep = parseInt(button.dataset.currentStep);
-                
-                // --- MULTI LINK LOGIC ---
-                // Cycle through links
-                let linkToOpen = AD_LINKS[currentStep % AD_LINKS.length];
-                
-                if(linkToOpen) {{
-                    window.open(linkToOpen, "_blank");
-                }} else {{
-                    console.log("No ad link found, check configuration.");
-                }}
-                // ------------------------
-
+                let clickCount = parseInt(button.dataset.clickCount);
                 const block = button.parentElement;
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
                 const downloadUrl = button.dataset.url;
-
-                button.style.display = 'none';
-                timerDisplay.style.display = 'block';
-                
-                let timeLeft = TIMER_SECONDS;
-                timerDisplay.innerText = `Please Wait: ${{timeLeft}}s (Step ${{currentStep + 1}}/${{MAX_STEPS}})`;
-
-                const timer = setInterval(() => {{
-                    timeLeft--;
-                    timerDisplay.innerText = `Please Wait: ${{timeLeft}}s (Step ${{currentStep + 1}}/${{MAX_STEPS}})`;
-
-                    if (timeLeft <= 0) {{
-                        clearInterval(timer);
-                        timerDisplay.style.display = 'none';
-                        
-                        // Check if total steps are completed
-                        if (currentStep + 1 >= MAX_STEPS) {{
-                            realDownloadLink.href = downloadUrl;
+                if (clickCount === 0) {{
+                    window.open(AD_LINK, "_blank");
+                    button.innerText = "Click Again to Start Timer";
+                    button.dataset.clickCount = 1;
+                }} else if (clickCount === 1) {{
+                    button.style.display = 'none';
+                    timerDisplay.style.display = 'block';
+                    realDownloadLink.href = downloadUrl;
+                    let timeLeft = TIMER_SECONDS;
+                    timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
+                    const timer = setInterval(() => {{
+                        timeLeft--;
+                        timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
+                        if (timeLeft <= 0) {{
+                            clearInterval(timer);
+                            timerDisplay.style.display = 'none';
                             realDownloadLink.style.display = 'block';
-                            
                             const counter = document.getElementById('download-counter');
                             if(counter) {{ counter.innerText = parseInt(counter.innerText) + 1; }}
-                        }} else {{
-                            currentStep++;
-                            button.dataset.currentStep = currentStep;
-                            button.innerText = `🔄 Next Step (${{currentStep + 1}}/${{MAX_STEPS}}) - Click Here`;
-                            button.style.display = 'block';
                         }}
-                    }}
-                }}, 1000);
+                    }}, 1000);
+                    button.dataset.clickCount = 2;
+                }}
             }};
         }});
     }});
@@ -437,6 +352,7 @@ def generate_html(data: dict, links: list, user_id: int):
     return final_html
 
 def generate_filedl_html(title, links_list):
+    # CSS Styles - Simplified for Uniformity
     css = """
     <style>
         .fdl-container { font-family: 'Segoe UI', sans-serif; text-align: center; max-width: 600px; margin: 0 auto; padding: 20px; background: #fff; }
@@ -536,130 +452,27 @@ def generate_image(data: dict):
         logger.error(f"Error generating image: {e}")
         return None
 
-# ---- BOT HANDLERS & MENU SYSTEM ----
-
+# ---- BOT HANDLERS ----
 @bot.on_message(filters.command("start") & filters.private)
 async def start_command(client, message: Message):
-    user_conversations.pop(message.from_user.id, None) # Clear old session
-    
-    # Dashboard Buttons
-    buttons = [
-        [
-            InlineKeyboardButton("📚 ব্যবহার বিধি (Help)", callback_data="help_menu"),
-            InlineKeyboardButton("⚙️ অ্যাডমিন সেটআপ", callback_data="admin_menu")
-        ],
-        [
-            InlineKeyboardButton("📂 FilesDL গাইড", callback_data="filedl_menu"),
-            InlineKeyboardButton("📢 চ্যানেল সেটআপ", callback_data="channel_menu")
-        ],
-        [
-            InlineKeyboardButton("❌ Close Panel", callback_data="close_menu")
-        ]
-    ]
-    
-    welcome_text = (
-        f"👋 **স্বাগতম {message.from_user.first_name}!**\n\n"
-        "এটি একটি অ্যাডভান্সড **Movie & Series Post Bot**।\n"
-        "এই বটের মাধ্যমে আপনি মাল্টি-স্টেপ এবং মাল্টি-অ্যাড লিংক সহ পোস্ট তৈরি করতে পারবেন।\n\n"
-        "👇 **নিচের বাটনগুলো থেকে বিস্তারিত জেনে নিন:**"
+    user_conversations.pop(message.from_user.id, None)
+    bot_username = (await client.get_me()).username
+    await message.reply_text(
+        f"👋 **Welcome to the Movie & Series Bot!**\n\n"
+        f"**New:** Use `/post` to create content easily!\n\n"
+        f"**Commands:**\n"
+        f"1️⃣ `/post <Name>` - Search by Name (e.g. `/post Inception`)\n"
+        f"2️⃣ `/post <Link>` - By TMDB Link (e.g. `/post https://...`)\n"
+        f"3️⃣ `/post <IMDb>` - By IMDb Link/ID (e.g. `/post https://imdb...`)\n\n"
+        "**Other Commands:**\n"
+        "`/filedl` - 🆕 Create FilesDL Style Button Post\n"
+        "`/poster` - Get HD posters.\n"
+        "`/setchannel` - Set main channel.\n"
+        "`/manual` - Add content manually.\n"
+        "`/setadlink` - Update ad link.\n\n"
+        "**Auto-Post Config:**\n"
+        "`/setpromochannel`, `/setpromoname`, `/setwatchlink`..."
     )
-    
-    await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
-
-# --- DASHBOARD MENU CALLBACKS ---
-@bot.on_callback_query(filters.regex("^(help_menu|admin_menu|filedl_menu|channel_menu|home_menu|close_menu)"))
-async def main_menu_callbacks(client, callback: CallbackQuery):
-    data = callback.data
-    
-    # --- HOME MENU ---
-    if data == "home_menu":
-        buttons = [
-            [InlineKeyboardButton("📚 ব্যবহার বিধি (Help)", callback_data="help_menu"),
-             InlineKeyboardButton("⚙️ অ্যাডমিন সেটআপ", callback_data="admin_menu")],
-            [InlineKeyboardButton("📂 FilesDL গাইড", callback_data="filedl_menu"),
-             InlineKeyboardButton("📢 চ্যানেল সেটআপ", callback_data="channel_menu")],
-            [InlineKeyboardButton("❌ Close", callback_data="close_menu")]
-        ]
-        text = (
-            f"👋 **স্বাগতম {callback.from_user.first_name}!**\n\n"
-            "এটি একটি অ্যাডভান্সড **Movie & Series Post Bot**।\n"
-            "নিচের অপশনগুলো থেকে আপনার প্রয়োজনীয় গাইড দেখে নিন।"
-        )
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
-
-    # --- HELP MENU (POSTING GUIDE) ---
-    elif data == "help_menu":
-        text = (
-            "📚 **পোস্ট তৈরির নিয়মাবলী:**\n\n"
-            "**১. নাম দিয়ে সার্চ:**\n"
-            "`/post Jawan` (মুভির নাম লিখুন)\n\n"
-            "**২. লিংক দিয়ে সার্চ:**\n"
-            "`/post https://...` (TMDB বা IMDb লিংক)\n\n"
-            "**৩. ম্যানুয়াল পোস্ট:**\n"
-            "`/manual` - নিজের মতো করে সব তথ্য দিয়ে পোস্ট সাজাতে।\n\n"
-            "**৪. পোস্টার ডাউনলোড:**\n"
-            "`/poster Jawan` - শুধুমাত্র পোস্টার পেতে।\n\n"
-            "👇 **নিচে ফিরে যাওয়ার বাটন:**"
-        )
-        buttons = [[InlineKeyboardButton("🔙 Back to Home", callback_data="home_menu")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
-
-    # --- ADMIN SETUP (STEPS & ADS) ---
-    elif data == "admin_menu":
-        text = (
-            "⚙️ **অ্যাডমিন এবং ইনকাম সেটআপ:**\n\n"
-            "**🔹 স্টেপ সেট করা:**\n"
-            "কমান্ড: `/setsteps 3`\n"
-            "_(ইউজার ডাউনলোডের আগে কয়টি পেজ দেখবে তা ঠিক করুন। ১-৫ পর্যন্ত দেওয়া যাবে।)_\n\n"
-            "**🔹 অ্যাড লিংক বসানো (Multi-Link):**\n"
-            "১ম ক্লিকের লিংক: `/setadlink 1 https://link1.com`\n"
-            "২য় ক্লিকের লিংক: `/setadlink 2 https://link2.com`\n"
-            "৩য় ক্লিকের লিংক: `/setadlink 3 https://link3.com`\n\n"
-            "✅ *টিপস: যত বেশি স্টেপ এবং লিংক দিবেন, তত বেশি ইনকাম হবে।* \n\n"
-            "👇 **নিচে ফিরে যাওয়ার বাটন:**"
-        )
-        buttons = [[InlineKeyboardButton("🔙 Back to Home", callback_data="home_menu")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
-
-    # --- FILEDL MENU ---
-    elif data == "filedl_menu":
-        text = (
-            "📂 **FilesDL (বাটন পোস্ট) গাইড:**\n\n"
-            "এই ফিচারের মাধ্যমে আপনি সুন্দর বাটন ওয়ালা ডাউনলোড পেজ তৈরি করতে পারবেন।\n\n"
-            "**পদ্ধতি:**\n"
-            "১. `/filedl` কমান্ড দিন।\n"
-            "২. পোস্টের টাইটেল দিন।\n"
-            "৩. বাটনের নাম দিন (যেমন: Download 720p)।\n"
-            "৪. ওই বাটনের লিংক দিন।\n"
-            "৫. সব বাটন দেওয়া হলে `DONE` লিখুন।\n\n"
-            "বট আপনাকে একটি HTML কোড দিবে যা ব্লগারে ব্যবহার করা যাবে।"
-        )
-        buttons = [[InlineKeyboardButton("🔙 Back to Home", callback_data="home_menu")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
-
-    # --- CHANNEL SETUP MENU ---
-    elif data == "channel_menu":
-        text = (
-            "📢 **অটো-পোস্ট এবং চ্যানেল সেটআপ:**\n\n"
-            "**১. মেইন চ্যানেল সেট করা:**\n"
-            "`/setchannel @yourchannel`\n"
-            "_(পোস্ট তৈরির পর 'Post to Channel' বাটনে ক্লিক করলে এখানে যাবে)_\n\n"
-            "**২. প্রোমো চ্যানেল (অটোমেটিক):**\n"
-            "`/setpromochannel @promo_channel`\n"
-            "`/setpromoname YourSiteName`\n"
-            "`/setwatchlink https://site.com`\n"
-            "`/setdownloadlink https://howtodownload.com`\n"
-            "`/setrequestlink https://requestgroup.com`\n\n"
-            "✅ *এগুলো সেট করলে পোস্ট তৈরির সাথে সাথে অটোমেটিক সুন্দর বাটন সহ চ্যানেলে পোস্ট হয়ে যাবে।*"
-        )
-        buttons = [[InlineKeyboardButton("🔙 Back to Home", callback_data="home_menu")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
-
-    # --- CLOSE ---
-    elif data == "close_menu":
-        await callback.message.delete()
-
-# --- OTHER COMMANDS ---
 
 @bot.on_message(filters.command("poster") & filters.private)
 async def poster_command(client, message: Message):
@@ -738,68 +551,15 @@ async def manual_add_command(_, message: Message):
     user_conversations[user_id] = {"state": "manual_wait_title", "details": {}, "links": []}
     await message.reply_text("🎬 **Manual Content Entry**\n\nFirst, please send the **Title**.")
 
-# --- SET STEPS COMMAND ---
-@bot.on_message(filters.command("setsteps") & filters.private)
-async def set_steps_command(_, message: Message):
-    user_id = message.from_user.id
-    if len(message.command) > 1:
-        try:
-            steps = int(message.command[1])
-            if 1 <= steps <= 5:
-                user_steps_config[user_id] = steps
-                save_steps_config()
-                await message.reply_text(f"✅ **Success!** Download steps set to: **{steps}**")
-            else:
-                await message.reply_text("⚠️ Please choose between **1 and 5**.")
-        except ValueError:
-            await message.reply_text("⚠️ Invalid number.")
-    else:
-        current = user_steps_config.get(user_id, 1)
-        await message.reply_text(f"🔢 **Current Steps:** `{current}`\n\nUsage: `/setsteps 3`")
-
-# --- SET AD LINK COMMAND (SLOT BASED) ---
 @bot.on_message(filters.command("setadlink") & filters.private)
 async def set_ad_link_command(_, message: Message):
     user_id = message.from_user.id
-    
-    # Initialize with default if empty or convert old string format
-    if user_id not in user_ad_links or isinstance(user_ad_links[user_id], str):
-        user_ad_links[user_id] = [DEFAULT_AD_LINK]
-
-    if len(message.command) >= 3:
-        try:
-            slot = int(message.command[1]) # 1, 2, 3, or 4
-            link = message.command[2]
-
-            if not (1 <= slot <= 4):
-                await message.reply_text("⚠️ **Slot must be between 1 and 4.**")
-                return
-            
-            if not (link.startswith("http://") or link.startswith("https://")):
-                await message.reply_text("⚠️ **Invalid Link.** Must start with http/https.")
-                return
-
-            # Ensure list has enough slots
-            current_links = user_ad_links[user_id]
-            while len(current_links) < slot:
-                current_links.append(DEFAULT_AD_LINK)
-            
-            # Set link at index (slot - 1)
-            current_links[slot-1] = link
-            user_ad_links[user_id] = current_links
-            
-            save_user_ad_links()
-            
-            links_preview = "\n".join([f"Slot {i+1}: {l}" for i, l in enumerate(current_links)])
-            await message.reply_text(f"✅ **Ad Link Set for Slot {slot}!**\n\n**Current Config:**\n{links_preview}")
-
-        except ValueError:
-            await message.reply_text("⚠️ **Usage:** `/setadlink <number> <url>`\nExample: `/setadlink 1 https://google.com`")
+    if len(message.command) > 1 and (message.command[1].startswith("http://") or message.command[1].startswith("https://")):
+        user_ad_links[user_id] = message.command[1]
+        save_user_ad_links()
+        await message.reply_text(f"✅ **Ad Link Updated!**")
     else:
-        current_links = user_ad_links.get(user_id, [DEFAULT_AD_LINK])
-        if isinstance(current_links, str): current_links = [current_links]
-        links_preview = "\n".join([f"Slot {i+1}: {l}" for i, l in enumerate(current_links)])
-        await message.reply_text(f"⚙️ **Current Ad Links:**\n\n{links_preview}\n\n⚠️ **Usage:** `/setadlink 1 https://link1.com`")
+        await message.reply_text("⚠️ **Usage:** `/setadlink https://your-ad-link.com`")
 
 # ---- NEW FILEDL COMMAND HANDLERS (STEP-BY-STEP) ----
 @bot.on_message(filters.command("filedl") & filters.private)
@@ -845,19 +605,20 @@ async def filedl_name_handler(client, message: Message):
         # Generate HTML
         final_html = generate_filedl_html(data["title"], data["links"])
         
-        # --- MODIFIED: ROBUST PASTE LINK ---
-        paste_url = create_paste_link(final_html)
-        if paste_url:
+        # Send AS TEXT (Raw Code) instead of File
+        if len(final_html) < 4000:
             await message.reply_text(
-                "✅ **FilesDL Code Ready!**\n👇 Click below to copy:",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 View Code (One Click Copy)", url=paste_url)]])
+                f"✅ **Your HTML Code:**\n\n```html\n{final_html}\n```",
+                parse_mode=enums.ParseMode.MARKDOWN
             )
         else:
-            # Fallback to file only if absolutely necessary
+             # Fallback to file if too long for Telegram message
             file_bytes = io.BytesIO(final_html.encode('utf-8'))
             file_bytes.name = "filesdl_code.html"
-            await message.reply_document(document=file_bytes, caption="⚠️ Could not create link. Sending file instead.")
-        # -----------------------------------
+            await message.reply_document(
+                document=file_bytes,
+                caption="✅ Code is too long for text, sending as file."
+            )
 
         # End Session
         user_conversations.pop(user_id, None)
@@ -1100,7 +861,7 @@ async def selection_callback(client, cb):
     filters.text & 
     filters.private & 
     ~filters.command([
-        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details", "filedl", "post", "setsteps",
+        "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details", "filedl", "post",
         "setpromochannel", "setpromoname", "setwatchlink", "setdownloadlink", "setrequestlink"
     ])
 )
@@ -1338,22 +1099,17 @@ async def final_action_callback(client, cb):
     if action == "get_html":
         await cb.answer("🔗 Generating link...", show_alert=False)
         html_code = generated.get("html", "")
-        
-        # --- MODIFIED: ROBUST PASTE LINK (dpaste.com OR dpaste.org) ---
-        paste_url = create_paste_link(html_code)
-        
-        if paste_url:
-             await cb.message.reply_text(
-                "✅ **Blogger Code Ready!**",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Copy Code Here", url=paste_url)]])
-            )
-        else:
+        try:
+            response = requests.post("https://dpaste.com/api/", data={"content": html_code, "syntax": "html"})
+            response.raise_for_status()
+            await cb.message.reply_text("✅ **Blogger Code Ready!**",
+                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Copy Code Here", url=response.text.strip())]]))
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error creating paste link: {e}")
             await cb.message.reply_text("⚠️ **Error!** Sending as file instead.")
             file_bytes = io.BytesIO(html_code.encode('utf-8'))
             file_bytes.name = f"{(convo['details'].get('title') or 'post').replace(' ', '_')}.html"
             await client.send_document(cb.message.chat.id, document=file_bytes)
-        # -----------------------------------
-
     elif action == "get_caption":
         await cb.answer()
         await client.send_message(cb.message.chat.id, generated["caption"])
@@ -1377,7 +1133,6 @@ if __name__ == "__main__":
     logger.info("🚀 Starting the bot...")
     load_user_ad_links()
     load_promo_config()
-    load_steps_config() # NEW CONFIG LOADER
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
