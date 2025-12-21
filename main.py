@@ -90,39 +90,55 @@ def load_promo_config():
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading promo config: {e}")
 
-# ---- IMPROVED DPASTE FUNCTION ----
+# ---- NEW ROBUST PASTE FUNCTION (Spacebin & Hastebin) ----
 def create_paste_link(content: str):
     """
-    Generates a link using dpaste.com with retry mechanism.
+    Tries multiple reliable services to avoid 'Connection not private' errors.
+    Priority: Spacebin -> Hastebin -> Dpaste (Fallback)
     """
     if not content:
         return None
 
-    # Data payload
-    data = {
-        "content": content,
-        "syntax": "html", 
-        "expiry_days": 10,
-        "title": "Blogger Code"
-    }
-
-    # Attempt 1: Standard HTTPS
+    # --- PRIORITY 1: SPACEBIN (Very Clean & Stable) ---
     try:
-        response = requests.post("https://dpaste.com/api/", data=data, timeout=30)
-        if response.status_code == 201 or response.status_code == 200:
-            return response.text.strip()
-        else:
-            logger.warning(f"Dpaste HTTPS failed with status: {response.status_code}")
+        response = requests.post(
+            "https://spaceb.in/api/v1/documents",
+            json={"content": content, "extension": "html"},
+            timeout=15
+        )
+        if response.ok:
+            data = response.json()
+            if "payload" in data and "id" in data["payload"]:
+                # Returns link like: https://spaceb.in/xYz123
+                return f"https://spaceb.in/{data['payload']['id']}"
     except Exception as e:
-        logger.warning(f"Dpaste HTTPS Error: {e}")
+        logger.warning(f"Spacebin failed: {e}")
 
-    # Attempt 2: HTTP (Fallback if HTTPS fails due to SSL issues)
+    # --- PRIORITY 2: HASTEBIN (Toptal Mirror - Secure) ---
     try:
-        response = requests.post("http://dpaste.com/api/", data=data, timeout=30)
-        if response.status_code == 201 or response.status_code == 200:
+        response = requests.post(
+            "https://www.toptal.com/developers/hastebin/documents",
+            data=content.encode('utf-8'),
+            timeout=15
+        )
+        if response.ok:
+            key = response.json().get('key')
+            if key:
+                return f"https://www.toptal.com/developers/hastebin/{key}"
+    except Exception as e:
+        logger.warning(f"Hastebin failed: {e}")
+
+    # --- FALLBACK: DPASTE (If others fail) ---
+    try:
+        response = requests.post(
+            "https://dpaste.com/api/",
+            data={"content": content, "syntax": "html", "expiry_days": 7},
+            timeout=15
+        )
+        if response.ok:
             return response.text.strip()
     except Exception as e:
-        logger.error(f"Dpaste HTTP Error: {e}")
+        logger.error(f"All paste services failed: {e}")
 
     return None
 
@@ -130,7 +146,7 @@ def create_paste_link(content: str):
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Robust Dpaste Version) is running!"
+    return "✅ Final Bot (Multi-Service Version) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -620,7 +636,7 @@ async def filedl_name_handler(client, message: Message):
         
         await message.reply_text("⏳ Generating online link for your code...")
         
-        # Call the new robust function (DPASTE FIRST)
+        # Call the new robust function
         paste_link = create_paste_link(final_html)
         
         if paste_link:
@@ -1091,10 +1107,10 @@ async def final_action_callback(client, cb):
     generated = convo["generated"]
     
     if action == "get_html":
-        await cb.answer("🔗 Creating Dpaste link...", show_alert=False)
+        await cb.answer("🔗 Creating link (Spacebin/Hastebin)...", show_alert=False)
         html_code = generated.get("html", "")
         
-        # Call the STRICT DPASTE function
+        # Call the ROBUST paste function
         paste_link = create_paste_link(html_code)
         
         if paste_link:
@@ -1106,7 +1122,7 @@ async def final_action_callback(client, cb):
                 ])
             )
         else:
-            await cb.message.reply_text("⚠️ **Network Error!** Could not create link. Sending file instead.")
+            await cb.message.reply_text("⚠️ **All Link Services Failed!** Sending file instead.")
             file_bytes = io.BytesIO(html_code.encode('utf-8'))
             file_bytes.name = f"{(convo['details'].get('title') or 'post').replace(' ', '_')}.html"
             await client.send_document(cb.message.chat.id, document=file_bytes)
