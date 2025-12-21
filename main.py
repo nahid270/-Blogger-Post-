@@ -90,45 +90,47 @@ def load_promo_config():
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading promo config: {e}")
 
-# ---- STRICT DPASTE FUNCTION (NO FALLBACK) ----
+# ---- IMPROVED DPASTE FUNCTION ----
 def create_paste_link(content: str):
     """
-    Generates a link ONLY using dpaste.com.
-    If it fails, it returns None (so the bot sends a file instead).
+    Generates a link using dpaste.com with retry mechanism.
     """
     if not content:
         return None
 
-    # Using User-Agent to prevent blocking
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    # Data payload
+    data = {
+        "content": content,
+        "syntax": "html", 
+        "expiry_days": 10,
+        "title": "Blogger Code"
     }
 
+    # Attempt 1: Standard HTTPS
     try:
-        response = requests.post(
-            "https://dpaste.com/api/",
-            data={
-                "content": content,
-                "syntax": "html",
-                "expiry_days": 14, # Link stays valid for 14 days
-                "title": "Blogger Post Code"
-            },
-            headers=headers,
-            timeout=20  # Increased timeout
-        )
-        response.raise_for_status()
-        # Returns the dpaste url (e.g., https://dpaste.com/ABCD123)
-        return response.text.strip()
+        response = requests.post("https://dpaste.com/api/", data=data, timeout=30)
+        if response.status_code == 201 or response.status_code == 200:
+            return response.text.strip()
+        else:
+            logger.warning(f"Dpaste HTTPS failed with status: {response.status_code}")
     except Exception as e:
-        logger.error(f"❌ Dpaste failed: {e}")
-        # NO FALLBACK: If dpaste fails, we return None.
-        return None
+        logger.warning(f"Dpaste HTTPS Error: {e}")
+
+    # Attempt 2: HTTP (Fallback if HTTPS fails due to SSL issues)
+    try:
+        response = requests.post("http://dpaste.com/api/", data=data, timeout=30)
+        if response.status_code == 201 or response.status_code == 200:
+            return response.text.strip()
+    except Exception as e:
+        logger.error(f"Dpaste HTTP Error: {e}")
+
+    return None
 
 # ---- FLASK APP FOR KEEP-ALIVE ----
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Strict Dpaste Version) is running!"
+    return "✅ Final Bot (Robust Dpaste Version) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -252,7 +254,7 @@ def generate_html(data: dict, links: list, user_id: int):
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
-    TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"
+    TELEGRAM_LINK = "https://t.me/YourChannelLink"
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
