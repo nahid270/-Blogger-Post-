@@ -201,6 +201,38 @@ def extract_tmdb_id(query: str):
 
     return None, None
 
+# ---- HELPER: ROBUST PASTE FUNCTION ----
+def create_paste_link(content: str):
+    """Tries to create a paste link on multiple services to avoid errors."""
+    
+    # Attempt 1: dpaste.com (Best UI)
+    try:
+        response = requests.post(
+            "https://dpaste.com/api/",
+            data={"content": content, "syntax": "html", "expiry_days": 14},
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'},
+            timeout=15
+        )
+        if response.status_code == 200:
+            return response.text.strip()
+    except Exception as e:
+        logger.warning(f"⚠️ dpaste.com failed: {e}")
+
+    # Attempt 2: paste.rs (Fallback, raw text)
+    try:
+        response = requests.post(
+            "https://paste.rs/",
+            data=content,
+            headers={'User-Agent': 'Mozilla/5.0'},
+            timeout=15
+        )
+        if response.status_code == 200 or response.status_code == 201:
+            return response.text.strip()
+    except Exception as e:
+        logger.warning(f"⚠️ paste.rs failed: {e}")
+
+    return None
+
 # ---- CONTENT GENERATION FUNCTIONS ----
 def generate_formatted_caption(data: dict):
     title = data.get("title") or data.get("name") or "N/A"
@@ -809,23 +841,19 @@ async def filedl_name_handler(client, message: Message):
         # Generate HTML
         final_html = generate_filedl_html(data["title"], data["links"])
         
-        # --- MODIFIED: RESTORED DPASTE LINK ---
-        try:
-            response = requests.post("https://dpaste.com/api/", data={"content": final_html, "syntax": "html"})
-            response.raise_for_status()
-            url = response.text.strip()
-            
+        # --- MODIFIED: ROBUST PASTE LINK ---
+        paste_url = create_paste_link(final_html)
+        if paste_url:
             await message.reply_text(
                 "✅ **FilesDL Code Ready!**\n👇 Click below to copy:",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 View Code (One Click Copy)", url=url)]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 View Code (One Click Copy)", url=paste_url)]])
             )
-        except Exception as e:
-            logger.error(f"Dpaste failed: {e}")
-            # Fallback to file
+        else:
+            # Fallback to file only if absolutely necessary
             file_bytes = io.BytesIO(final_html.encode('utf-8'))
             file_bytes.name = "filesdl_code.html"
-            await message.reply_document(document=file_bytes, caption="⚠️ Failed to create link, sent as file.")
-        # -------------------------------------
+            await message.reply_document(document=file_bytes, caption="⚠️ Could not create link. Sending file instead.")
+        # -----------------------------------
 
         # End Session
         user_conversations.pop(user_id, None)
@@ -1307,19 +1335,20 @@ async def final_action_callback(client, cb):
         await cb.answer("🔗 Generating link...", show_alert=False)
         html_code = generated.get("html", "")
         
-        # --- MODIFIED: RESTORED DPASTE LINK ---
-        try:
-            response = requests.post("https://dpaste.com/api/", data={"content": html_code, "syntax": "html"})
-            response.raise_for_status()
-            await cb.message.reply_text("✅ **Blogger Code Ready!**",
-                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Copy Code Here", url=response.text.strip())]]))
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error creating paste link: {e}")
+        # --- MODIFIED: ROBUST PASTE LINK ---
+        paste_url = create_paste_link(html_code)
+        
+        if paste_url:
+             await cb.message.reply_text(
+                "✅ **Blogger Code Ready!**",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Copy Code Here", url=paste_url)]])
+            )
+        else:
             await cb.message.reply_text("⚠️ **Error!** Sending as file instead.")
             file_bytes = io.BytesIO(html_code.encode('utf-8'))
             file_bytes.name = f"{(convo['details'].get('title') or 'post').replace(' ', '_')}.html"
             await client.send_document(cb.message.chat.id, document=file_bytes)
-        # --------------------------------------
+        # -----------------------------------
 
     elif action == "get_caption":
         await cb.answer()
