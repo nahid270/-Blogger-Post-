@@ -90,31 +90,57 @@ def load_promo_config():
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading promo config: {e}")
 
-# ---- HELPER FUNCTION: CREATE PASTE LINK ----
+# ---- UPDATED FUNCTION: ROBUST PASTE LINK GENERATOR ----
 def create_paste_link(content: str):
-    """Generates a dpaste link for the given content to avoid file downloads."""
+    """
+    Tries multiple services to generate a link for the HTML code.
+    This ensures that if one fails, another will work.
+    """
+    if not content:
+        return None
+
+    # Method 1: Paste.rs (Very fast, reliable)
     try:
-        # Using dpaste.com API
+        # Paste.rs expects raw data in body
+        response = requests.post("https://paste.rs/", data=content.encode('utf-8'), timeout=10)
+        if response.status_code < 300:
+            return response.text.strip()
+    except Exception as e:
+        logger.warning(f"Paste.rs failed: {e}")
+
+    # Method 2: Dpaste.com (Good UI)
+    try:
         response = requests.post(
             "https://dpaste.com/api/",
-            data={
-                "content": content,
-                "syntax": "html",
-                "expiry_days": 14  # Link valid for 14 days
-            },
+            data={"content": content, "syntax": "html", "expiry_days": 14},
             timeout=10
         )
-        response.raise_for_status()
-        return response.text.strip()
+        if response.status_code < 300:
+            return response.text.strip()
     except Exception as e:
-        logger.error(f"Error creating paste link: {e}")
-        return None
+        logger.warning(f"Dpaste failed: {e}")
+
+    # Method 3: Fallback to Spacebin (if others fail)
+    try:
+        response = requests.post(
+            "https://spaceb.in/api/v1/documents",
+            data={"content": content, "extension": "html"},
+            timeout=10
+        )
+        if response.status_code < 300:
+            res_json = response.json()
+            if "payload" in res_json and "id" in res_json["payload"]:
+                return f"https://spaceb.in/{res_json['payload']['id']}"
+    except Exception as e:
+        logger.warning(f"Spacebin failed: {e}")
+
+    return None
 
 # ---- FLASK APP FOR KEEP-ALIVE ----
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Link System Version) is running!"
+    return "✅ Final Bot (Website Link Version) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -238,7 +264,7 @@ def generate_html(data: dict, links: list, user_id: int):
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     TIMER_SECONDS = 10
     INITIAL_DOWNLOADS = 493
-    TELEGRAM_LINK = "https://t.me/YourChannelLink"
+    TELEGRAM_LINK = "https://t.me/+60goZWp-FpkxNzVl"
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
@@ -602,23 +628,23 @@ async def filedl_name_handler(client, message: Message):
             
         final_html = generate_filedl_html(data["title"], data["links"])
         
-        # --- NEW LOGIC: UPLOAD TO PASTEBIN INSTEAD OF SENDING FILE ---
         await message.reply_text("⏳ Generating online link for your code...")
+        
+        # Call the new robust function
         paste_link = create_paste_link(final_html)
         
         if paste_link:
             await message.reply_text(
                 "✅ **Code Generated Successfully!**\n\n"
-                "👇 Click the button below to view and copy the code easily.",
+                "👇 Click below to View & Copy the code.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔗 View & Copy Code", url=paste_link)]
                 ])
             )
         else:
-            # Fallback if paste fails
             file_bytes = io.BytesIO(final_html.encode('utf-8'))
             file_bytes.name = "filesdl_code.html"
-            await message.reply_document(document=file_bytes, caption="⚠️ Could not create link. Here is the file.")
+            await message.reply_document(document=file_bytes, caption="⚠️ Link generation failed. Here is the file.")
 
         user_conversations.pop(user_id, None)
         return
@@ -1078,19 +1104,19 @@ async def final_action_callback(client, cb):
         await cb.answer("🔗 Creating online link...", show_alert=False)
         html_code = generated.get("html", "")
         
-        # --- NEW LOGIC: ALWAYS USE PASTE LINK ---
+        # Use robust paste generator
         paste_link = create_paste_link(html_code)
         
         if paste_link:
             await cb.message.reply_text(
                 "✅ **Blogger Code Ready!**\n\n"
-                "👇 Click the button below to view and copy the code easily.",
+                "👇 Click below to View & Copy the code.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔗 View & Copy Code", url=paste_link)]
                 ])
             )
         else:
-            await cb.message.reply_text("⚠️ **Error generating link!** Sending as file instead.")
+            await cb.message.reply_text("⚠️ **Network Error!** Could not create link. Sending file instead.")
             file_bytes = io.BytesIO(html_code.encode('utf-8'))
             file_bytes.name = f"{(convo['details'].get('title') or 'post').replace(' ', '_')}.html"
             await client.send_document(cb.message.chat.id, document=file_bytes)
