@@ -203,33 +203,37 @@ def extract_tmdb_id(query: str):
 
 # ---- HELPER: ROBUST PASTE FUNCTION ----
 def create_paste_link(content: str):
-    """Tries to create a paste link on multiple services to avoid errors."""
+    """
+    Creates a paste link. 
+    Priority 1: dpaste.com (Familiar UI, Copy Button)
+    Priority 2: dpaste.org (Almost same UI, Copy Button)
+    """
     
-    # Attempt 1: dpaste.com (Best UI)
+    # Attempt 1: dpaste.com (User's Favorite)
     try:
         response = requests.post(
             "https://dpaste.com/api/",
             data={"content": content, "syntax": "html", "expiry_days": 14},
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'},
-            timeout=15
+            timeout=10
         )
         if response.status_code == 200:
             return response.text.strip()
     except Exception as e:
         logger.warning(f"⚠️ dpaste.com failed: {e}")
 
-    # Attempt 2: paste.rs (Fallback, raw text)
+    # Attempt 2: dpaste.org (Backup - Has specific 'Copy' button UI)
     try:
         response = requests.post(
-            "https://paste.rs/",
-            data=content,
+            "https://dpaste.org/api/",
+            data={"content": content, "lexer": "html", "format": "url", "expires": 604800},
             headers={'User-Agent': 'Mozilla/5.0'},
-            timeout=15
+            timeout=10
         )
-        if response.status_code == 200 or response.status_code == 201:
+        if response.status_code == 200:
             return response.text.strip()
     except Exception as e:
-        logger.warning(f"⚠️ paste.rs failed: {e}")
+        logger.warning(f"⚠️ dpaste.org failed: {e}")
 
     return None
 
@@ -1335,7 +1339,7 @@ async def final_action_callback(client, cb):
         await cb.answer("🔗 Generating link...", show_alert=False)
         html_code = generated.get("html", "")
         
-        # --- MODIFIED: ROBUST PASTE LINK ---
+        # --- MODIFIED: ROBUST PASTE LINK (dpaste.com OR dpaste.org) ---
         paste_url = create_paste_link(html_code)
         
         if paste_url:
