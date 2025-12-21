@@ -94,48 +94,65 @@ def load_promo_config():
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading promo config: {e}")
 
-# ---- FORCE DPASTE FUNCTION (SSL BYPASS) ----
+# ---- NEW PASTE FUNCTION (NEKOBIN & HASTEBIN) ----
 def create_paste_link(content: str):
     """
-    Generates a link using dpaste.com.
-    FORCE FIX: Disables SSL verification (verify=False) to bypass connection errors.
+    Generates a link using NekoBin or Hastebin.
+    This replaces Dpaste entirely to fix 'Connection not private' errors.
     """
     if not content:
         return None
 
-    # Using User-Agent to look like a real browser
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-
+    # --- PRIORITY 1: NEKOBIN (Very Stable) ---
     try:
-        # verify=False is the KEY FIX here
         response = requests.post(
-            "https://dpaste.com/api/",
-            data={
-                "content": content,
-                "syntax": "html",
-                "expiry_days": 14, 
-                "title": "Blogger Code"
-            },
-            headers=headers,
-            timeout=20,
-            verify=False  # <--- This fixes "Connection not private"
+            "https://nekobin.com/api/documents",
+            json={"content": content},
+            timeout=15
         )
-        
-        if response.status_code == 201 or response.status_code == 200:
-            return response.text.strip()
-            
+        if response.ok:
+            json_resp = response.json()
+            if "result" in json_resp and "key" in json_resp["result"]:
+                # Link format: https://nekobin.com/KEY
+                return f"https://nekobin.com/{json_resp['result']['key']}"
     except Exception as e:
-        logger.error(f"❌ Dpaste failed: {e}")
-        
+        logger.warning(f"NekoBin failed: {e}")
+
+    # --- PRIORITY 2: HASTEBIN (Toptal Mirror - Secure) ---
+    try:
+        response = requests.post(
+            "https://www.toptal.com/developers/hastebin/documents",
+            data=content.encode('utf-8'),
+            timeout=15
+        )
+        if response.ok:
+            json_resp = response.json()
+            if "key" in json_resp:
+                return f"https://www.toptal.com/developers/hastebin/{json_resp['key']}"
+    except Exception as e:
+        logger.warning(f"Hastebin failed: {e}")
+    
+    # --- PRIORITY 3: Spacebin (Backup) ---
+    try:
+        response = requests.post(
+            "https://spaceb.in/api/v1/documents",
+            json={"content": content, "extension": "html"},
+            timeout=15
+        )
+        if response.ok:
+            data = response.json()
+            if "payload" in data and "id" in data["payload"]:
+                return f"https://spaceb.in/{data['payload']['id']}"
+    except Exception as e:
+         logger.warning(f"Spacebin failed: {e}")
+
     return None
 
 # ---- FLASK APP FOR KEEP-ALIVE ----
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Dpaste Fixed SSL) is running!"
+    return "✅ Final Bot (NekoBin Version) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -1048,7 +1065,7 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         await client.send_message(confirmation_chat_id, f"❌ Failed to send auto-post. **Error:** `{e}`")
 
 
-# ---- FINAL CONTENT GENERATION (UPDATED FOR DPASTE) ----
+# ---- FINAL CONTENT GENERATION (UPDATED FOR NEW PASTE) ----
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
     
@@ -1096,10 +1113,10 @@ async def final_action_callback(client, cb):
     generated = convo["generated"]
     
     if action == "get_html":
-        await cb.answer("🔗 Creating link (Spacebin/Hastebin)...", show_alert=False)
+        await cb.answer("🔗 Creating link (NekoBin/Hastebin)...", show_alert=False)
         html_code = generated.get("html", "")
         
-        # Call the ROBUST paste function
+        # Call the NEW PASTE FUNCTION
         paste_link = create_paste_link(html_code)
         
         if paste_link:
