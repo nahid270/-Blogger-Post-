@@ -90,48 +90,45 @@ def load_promo_config():
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading promo config: {e}")
 
-# ---- UPDATED FUNCTION: PRIORITIZE DPASTE.COM ----
+# ---- STRICT DPASTE FUNCTION (NO FALLBACK) ----
 def create_paste_link(content: str):
     """
-    Generates a link for the HTML code.
-    PRIORITY 1: DPASTE.COM (As requested by user)
-    Fallback: Paste.rs (Only if dpaste fails)
+    Generates a link ONLY using dpaste.com.
+    If it fails, it returns None (so the bot sends a file instead).
     """
     if not content:
         return None
 
-    # --- PRIORITY 1: DPASTE.COM ---
+    # Using User-Agent to prevent blocking
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
     try:
         response = requests.post(
             "https://dpaste.com/api/",
             data={
                 "content": content,
                 "syntax": "html",
-                "expiry_days": 14 # Link stays valid for 14 days
+                "expiry_days": 14, # Link stays valid for 14 days
+                "title": "Blogger Post Code"
             },
-            timeout=15
+            headers=headers,
+            timeout=20  # Increased timeout
         )
         response.raise_for_status()
         # Returns the dpaste url (e.g., https://dpaste.com/ABCD123)
         return response.text.strip()
     except Exception as e:
-        logger.warning(f"⚠️ Dpaste failed: {e}")
-
-    # --- FALLBACK: PASTE.RS (Backup) ---
-    try:
-        response = requests.post("https://paste.rs/", data=content.encode('utf-8'), timeout=10)
-        if response.status_code < 300:
-            return response.text.strip()
-    except Exception as e:
-        logger.warning(f"Paste.rs fallback failed: {e}")
-
-    return None
+        logger.error(f"❌ Dpaste failed: {e}")
+        # NO FALLBACK: If dpaste fails, we return None.
+        return None
 
 # ---- FLASK APP FOR KEEP-ALIVE ----
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Dpaste Version) is running!"
+    return "✅ Final Bot (Strict Dpaste Version) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -1095,7 +1092,7 @@ async def final_action_callback(client, cb):
         await cb.answer("🔗 Creating Dpaste link...", show_alert=False)
         html_code = generated.get("html", "")
         
-        # Call the updated priority function
+        # Call the STRICT DPASTE function
         paste_link = create_paste_link(html_code)
         
         if paste_link:
