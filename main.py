@@ -809,18 +809,23 @@ async def filedl_name_handler(client, message: Message):
         # Generate HTML
         final_html = generate_filedl_html(data["title"], data["links"])
         
-        # --- MODIFIED: SEND RAW TEXT ALWAYS (SPLIT IF LONG) ---
-        if len(final_html) > 4000:
-            await message.reply_text("⚠️ কোড অনেক বড়, তাই কয়েক ভাগে দিচ্ছি...", parse_mode=enums.ParseMode.MARKDOWN)
-            # 4000 ক্যারেক্টার করে ভাগ করে পাঠানো
-            for i in range(0, len(final_html), 4000):
-                await message.reply_text(f"```html\n{final_html[i:i+4000]}\n```", parse_mode=enums.ParseMode.MARKDOWN)
-        else:
+        # --- MODIFIED: RESTORED DPASTE LINK ---
+        try:
+            response = requests.post("https://dpaste.com/api/", data={"content": final_html, "syntax": "html"})
+            response.raise_for_status()
+            url = response.text.strip()
+            
             await message.reply_text(
-                f"✅ **Your HTML Code:**\n\n```html\n{final_html}\n```",
-                parse_mode=enums.ParseMode.MARKDOWN
+                "✅ **FilesDL Code Ready!**\n👇 Click below to copy:",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 View Code (One Click Copy)", url=url)]])
             )
-        # -----------------------------------------------------
+        except Exception as e:
+            logger.error(f"Dpaste failed: {e}")
+            # Fallback to file
+            file_bytes = io.BytesIO(final_html.encode('utf-8'))
+            file_bytes.name = "filesdl_code.html"
+            await message.reply_document(document=file_bytes, caption="⚠️ Failed to create link, sent as file.")
+        # -------------------------------------
 
         # End Session
         user_conversations.pop(user_id, None)
@@ -1299,23 +1304,22 @@ async def final_action_callback(client, cb):
     generated = convo["generated"]
     
     if action == "get_html":
-        await cb.answer("💻 Sending HTML Code...", show_alert=False)
+        await cb.answer("🔗 Generating link...", show_alert=False)
         html_code = generated.get("html", "")
         
-        # --- MODIFIED: SEND RAW TEXT INSTEAD OF DPASTE/FILE ---
-        if len(html_code) > 4000:
-            await cb.message.reply_text("⚠️ HTML কোডটি অনেক বড়, তাই এটি কয়েক ভাগে পাঠানো হচ্ছে। দয়া করে সব কপি করে নিন।")
-            # Loop to send in chunks
-            for i in range(0, len(html_code), 4000):
-                chunk = html_code[i:i+4000]
-                try:
-                    await cb.message.reply_text(f"```html\n{chunk}\n```", parse_mode=enums.ParseMode.MARKDOWN)
-                except Exception as e:
-                    # Fallback if markdown breaks
-                    await cb.message.reply_text(chunk)
-        else:
-            await cb.message.reply_text(f"✅ **Blogger HTML Code:**\n\n```html\n{html_code}\n```", parse_mode=enums.ParseMode.MARKDOWN)
-        # ------------------------------------------------------
+        # --- MODIFIED: RESTORED DPASTE LINK ---
+        try:
+            response = requests.post("https://dpaste.com/api/", data={"content": html_code, "syntax": "html"})
+            response.raise_for_status()
+            await cb.message.reply_text("✅ **Blogger Code Ready!**",
+                                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Copy Code Here", url=response.text.strip())]]))
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error creating paste link: {e}")
+            await cb.message.reply_text("⚠️ **Error!** Sending as file instead.")
+            file_bytes = io.BytesIO(html_code.encode('utf-8'))
+            file_bytes.name = f"{(convo['details'].get('title') or 'post').replace(' ', '_')}.html"
+            await client.send_document(cb.message.chat.id, document=file_bytes)
+        # --------------------------------------
 
     elif action == "get_caption":
         await cb.answer()
