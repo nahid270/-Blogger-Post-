@@ -90,49 +90,40 @@ def load_promo_config():
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading promo config: {e}")
 
-# ---- UPDATED FUNCTION: ROBUST PASTE LINK GENERATOR ----
+# ---- UPDATED FUNCTION: PRIORITIZE DPASTE.COM ----
 def create_paste_link(content: str):
     """
-    Tries multiple services to generate a link for the HTML code.
-    This ensures that if one fails, another will work.
+    Generates a link for the HTML code.
+    PRIORITY 1: DPASTE.COM (As requested by user)
+    Fallback: Paste.rs (Only if dpaste fails)
     """
     if not content:
         return None
 
-    # Method 1: Paste.rs (Very fast, reliable)
+    # --- PRIORITY 1: DPASTE.COM ---
     try:
-        # Paste.rs expects raw data in body
+        response = requests.post(
+            "https://dpaste.com/api/",
+            data={
+                "content": content,
+                "syntax": "html",
+                "expiry_days": 14 # Link stays valid for 14 days
+            },
+            timeout=15
+        )
+        response.raise_for_status()
+        # Returns the dpaste url (e.g., https://dpaste.com/ABCD123)
+        return response.text.strip()
+    except Exception as e:
+        logger.warning(f"⚠️ Dpaste failed: {e}")
+
+    # --- FALLBACK: PASTE.RS (Backup) ---
+    try:
         response = requests.post("https://paste.rs/", data=content.encode('utf-8'), timeout=10)
         if response.status_code < 300:
             return response.text.strip()
     except Exception as e:
-        logger.warning(f"Paste.rs failed: {e}")
-
-    # Method 2: Dpaste.com (Good UI)
-    try:
-        response = requests.post(
-            "https://dpaste.com/api/",
-            data={"content": content, "syntax": "html", "expiry_days": 14},
-            timeout=10
-        )
-        if response.status_code < 300:
-            return response.text.strip()
-    except Exception as e:
-        logger.warning(f"Dpaste failed: {e}")
-
-    # Method 3: Fallback to Spacebin (if others fail)
-    try:
-        response = requests.post(
-            "https://spaceb.in/api/v1/documents",
-            data={"content": content, "extension": "html"},
-            timeout=10
-        )
-        if response.status_code < 300:
-            res_json = response.json()
-            if "payload" in res_json and "id" in res_json["payload"]:
-                return f"https://spaceb.in/{res_json['payload']['id']}"
-    except Exception as e:
-        logger.warning(f"Spacebin failed: {e}")
+        logger.warning(f"Paste.rs fallback failed: {e}")
 
     return None
 
@@ -140,7 +131,7 @@ def create_paste_link(content: str):
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Website Link Version) is running!"
+    return "✅ Final Bot (Dpaste Version) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -630,7 +621,7 @@ async def filedl_name_handler(client, message: Message):
         
         await message.reply_text("⏳ Generating online link for your code...")
         
-        # Call the new robust function
+        # Call the new robust function (DPASTE FIRST)
         paste_link = create_paste_link(final_html)
         
         if paste_link:
@@ -1053,7 +1044,7 @@ async def send_channel_post(client, user_id: int, confirmation_chat_id: int):
         await client.send_message(confirmation_chat_id, f"❌ Failed to send auto-post. **Error:** `{e}`")
 
 
-# ---- FINAL CONTENT GENERATION (UPDATED FOR LINK SYSTEM) ----
+# ---- FINAL CONTENT GENERATION (UPDATED FOR DPASTE) ----
 async def generate_final_content(client, user_id, msg_to_edit: Message):
     if not (convo := user_conversations.get(user_id)): return
     
@@ -1101,10 +1092,10 @@ async def final_action_callback(client, cb):
     generated = convo["generated"]
     
     if action == "get_html":
-        await cb.answer("🔗 Creating online link...", show_alert=False)
+        await cb.answer("🔗 Creating Dpaste link...", show_alert=False)
         html_code = generated.get("html", "")
         
-        # Use robust paste generator
+        # Call the updated priority function
         paste_link = create_paste_link(html_code)
         
         if paste_link:
