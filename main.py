@@ -171,7 +171,7 @@ def create_paste_link(content: str):
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (RGB & Clean Interface) is running!"
+    return "✅ Final Bot (RGB & Auto Redirect) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -291,13 +291,13 @@ def generate_formatted_caption(data: dict):
         
     return caption_text
 
-# 🔥🔥🔥 REPLACED: NEW ULTRA PRO HTML GENERATOR (RGB + BIG INSTRUCTIONS) 🔥🔥🔥
+# 🔥🔥🔥 REPLACED: FIXED IMAGE, AUTO REDIRECT & BANNER INJECTION 🔥🔥🔥
 def generate_html(data: dict, links: list, user_id: int):
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     banner_code = user_banners.get(user_id, "") 
     
-    TIMER_SECONDS = 10
-    TELEGRAM_LINK = "https://t.me/+6hvCoblt6CxhZjhl"
+    TIMER_SECONDS = 10  # টাইমার ১০ সেকেন্ড
+    TELEGRAM_LINK = "https://t.me/YourChannelLink"
     
     # Extract Data
     title = data.get("title") or data.get("name") or "N/A"
@@ -364,12 +364,12 @@ def generate_html(data: dict, links: list, user_id: int):
             cast_html += f'<div class="cast-member"><img src="{pic}"><p>{member["name"]}</p></div>'
         cast_html += '</div>'
 
-    # 🔥 RGB Buttons Logic
+    # 🔥 Buttons Logic (No Gibberish, Just Clean HTML)
     download_blocks_html = ""
     for link in links:
         lbl = link['label']
         
-        # RGB Classes based on quality
+        # Color Classes
         btn_class = "rgb-btn-default"
         if "1080" in lbl or "4k" in lbl.lower(): btn_class = "rgb-btn-ultra"
         elif "720" in lbl: btn_class = "rgb-btn-high"
@@ -377,8 +377,8 @@ def generate_html(data: dict, links: list, user_id: int):
 
         download_blocks_html += f"""
         <div class="dl-download-block">
-            <button class="dl-rgb-button {btn_class}" data-url="{link['url']}" data-click-count="0">
-                <span class="btn-icon">⚡</span> <span class="btn-text">{lbl}</span>
+            <button class="dl-rgb-button {btn_class}" data-url="{link['url']}" onclick="startDownload(this)">
+                <span class="btn-text">{lbl}</span>
             </button>
         </div>
         """
@@ -395,12 +395,14 @@ def generate_html(data: dict, links: list, user_id: int):
 
     final_html = f"""
 {schema_markup}
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
 <div class="movie-post-wrapper">
     
-    <!-- Header -->
+    <!-- Header with Fixed Image -->
     <div class="movie-header">
-        <img src="{poster_url}" class="main-poster">
+        <div class="poster-wrapper">
+            <img src="{poster_url}" class="main-poster">
+        </div>
         <div class="movie-info">
             <h1>{title} ({year})</h1>
             <div class="badges">
@@ -422,32 +424,23 @@ def generate_html(data: dict, links: list, user_id: int):
     <div class="dl-section">
         <div class="dl-box">
             
-            <!-- 🔥 NEW: BIG INSTRUCTION PANEL 🔥 -->
+            <!-- Instruction Panel -->
             <div class="instruction-panel">
                 <h3 class="ins-title">📌 How to Download?</h3>
                 <div class="ins-steps">
                     <div class="step-item">
                         <div class="step-icon">👆</div>
-                        <div class="step-text">
-                            <strong>Click Button</strong>
-                            <small>Choose Quality</small>
-                        </div>
+                        <div class="step-text"><strong>Click Button</strong></div>
                     </div>
                     <div class="step-arrow">➜</div>
                     <div class="step-item">
                         <div class="step-icon">⏳</div>
-                        <div class="step-text">
-                            <strong>Wait {TIMER_SECONDS}s</strong>
-                            <small>On Button</small>
-                        </div>
+                        <div class="step-text"><strong>Wait {TIMER_SECONDS}s</strong></div>
                     </div>
                     <div class="step-arrow">➜</div>
                     <div class="step-item">
                         <div class="step-icon">✅</div>
-                        <div class="step-text">
-                            <strong>Get Link</strong>
-                            <small>Download Starts</small>
-                        </div>
+                        <div class="step-text"><strong>Auto Redirect</strong></div>
                     </div>
                 </div>
             </div>
@@ -459,92 +452,73 @@ def generate_html(data: dict, links: list, user_id: int):
             {banner_section}
             
             <a class="telegram-btn" href="{TELEGRAM_LINK}" target="_blank">
-                <span class="tg-icon">✈️</span> Join Telegram Channel
+                ✈️ Join Telegram Channel
             </a>
         </div>
     </div>
 
     <style>
         /* Base Styles */
-        .movie-post-wrapper {{ font-family: 'Poppins', sans-serif; color: #333; max-width: 800px; margin: auto; background: #fff; }}
-        .movie-header {{ display: flex; flex-wrap: wrap; gap: 20px; background: #fff; padding: 20px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border-bottom: 3px solid #f1f2f6; }}
-        .main-poster {{ width: 100%; max-width: 160px; border-radius: 10px; object-fit: cover; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }}
-        .movie-info {{ flex: 1; min-width: 250px; }}
-        .movie-info h1 {{ font-size: 26px; font-weight: 800; color: #2d3436; margin: 0 0 10px 0; line-height: 1.2; }}
-        .overview {{ font-size: 14px; color: #636e72; line-height: 1.6; }}
+        .movie-post-wrapper {{ font-family: 'Poppins', sans-serif; color: #333; max-width: 800px; margin: auto; background: #fff; padding: 10px; }}
+        
+        /* 🔥 FIXED HEADER & IMAGE CSS 🔥 */
+        .movie-header {{ 
+            display: flex; 
+            flex-direction: row; 
+            gap: 20px; 
+            background: #fff; 
+            padding: 15px; 
+            border-radius: 15px; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }}
+        
+        /* Mobile Responsive Header */
+        @media (max-width: 600px) {{
+            .movie-header {{ flex-direction: column; align-items: center; text-align: center; }}
+            .poster-wrapper {{ width: 100%; max-width: 200px; margin: 0 auto; }}
+        }}
+
+        .poster-wrapper {{ flex-shrink: 0; }}
+        .main-poster {{ 
+            width: 160px; 
+            height: auto; 
+            border-radius: 10px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2); 
+            display: block; /* Ensures visibility */
+        }}
+
+        .movie-info {{ flex: 1; }}
+        .movie-info h1 {{ font-size: 24px; font-weight: 800; color: #2d3436; margin: 0 0 10px 0; line-height: 1.2; }}
+        .overview {{ font-size: 14px; color: #636e72; line-height: 1.6; text-align: justify; }}
+        
         .badges {{ margin-bottom: 15px; }}
-        .badge {{ padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-right: 5px; text-transform: uppercase; letter-spacing: 0.5px; }}
+        .badge {{ padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; margin-right: 5px; }}
         .lang {{ background: #e3f2fd; color: #0984e3; }} 
         .imdb {{ background: #fff3e0; color: #e67e22; }}
         
-        /* Layouts */
-        .video-container {{ position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin-top: 30px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }}
+        /* Gallery & Video */
+        .video-container {{ position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin-top: 30px; border-radius: 12px; }}
         .video-container iframe {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }}
         .gallery-container {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }}
-        .gallery-img {{ width: 100%; border-radius: 8px; transition:0.3s; }}
-        .cast-container {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 15px; }}
-        .cast-member {{ text-align: center; width: 80px; font-size: 10px; font-weight: 600; }}
-        .cast-member img {{ width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #dfe6e9; margin-bottom: 5px; }}
+        .gallery-img {{ width: 100%; border-radius: 8px; }}
         
-        /* 🔥 INSTRUCTION PANEL STYLES 🔥 */
-        .dl-section {{ margin-top: 50px; }}
-        .dl-box {{ background: #ffffff; padding: 25px; border-radius: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.08); text-align: center; border: 1px solid #f1f2f6; }}
-        
-        .instruction-panel {{
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-radius: 15px;
-            padding: 20px;
-            margin-bottom: 30px;
-            border: 2px solid #dfe6e9;
-        }}
-        .ins-title {{
-            margin: 0 0 15px 0;
-            color: #2d3436;
-            font-size: 18px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }}
-        .ins-steps {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 10px;
-        }}
-        .step-item {{
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-width: 80px;
-        }}
-        .step-icon {{
-            font-size: 28px;
-            background: #fff;
-            width: 50px;
-            height: 50px;
-            line-height: 50px;
-            border-radius: 50%;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            margin-bottom: 8px;
-        }}
-        .step-text strong {{
-            display: block;
-            font-size: 14px;
-            color: #333;
-        }}
-        .step-text small {{
-            font-size: 11px;
-            color: #777;
-        }}
-        .step-arrow {{
-            font-size: 20px;
-            color: #b2bec3;
-            font-weight: bold;
-        }}
+        /* Cast */
+        .cast-container {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 15px; }}
+        .cast-member {{ text-align: center; width: 70px; font-size: 10px; }}
+        .cast-member img {{ width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #eee; }}
 
-        /* 🔥 RGB BUTTON STYLES 🔥 */
+        /* Instructions */
+        .dl-section {{ margin-top: 40px; }}
+        .dl-box {{ background: #fff; padding: 20px; border-radius: 15px; box-shadow: 0 5px 25px rgba(0,0,0,0.08); border: 1px solid #eee; }}
+        .instruction-panel {{ background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #e9ecef; text-align: center; }}
+        .ins-title {{ margin: 0 0 10px 0; font-size: 16px; font-weight: 800; color: #333; }}
+        .ins-steps {{ display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 12px; }}
+        .step-item {{ display: flex; flex-direction: column; align-items: center; }}
+        .step-icon {{ font-size: 20px; margin-bottom: 5px; }}
+        .step-arrow {{ color: #ccc; font-weight: bold; }}
+
+        /* Buttons */
         .dl-grid {{ display: flex; flex-direction: column; gap: 15px; }}
         
         @keyframes rgbGlow {{
@@ -552,142 +526,58 @@ def generate_html(data: dict, links: list, user_id: int):
             50% {{ background-position: 100% 50%; }}
             100% {{ background-position: 0% 50%; }}
         }}
-        @keyframes pulse {{
-            0% {{ transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.2); }}
-            70% {{ transform: scale(1.02); box-shadow: 0 0 0 10px rgba(0, 0, 0, 0); }}
-            100% {{ transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }}
-        }}
-
+        
         .dl-rgb-button {{
-            position: relative;
-            width: 100%;
-            padding: 18px;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            color: white;
-            font-family: 'Poppins', sans-serif;
-            font-size: 17px; 
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            outline: none;
-            transition: all 0.3s ease;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
-            background-size: 200% 200%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
+            width: 100%; padding: 16px; border: none; border-radius: 10px; cursor: pointer;
+            color: white; font-family: 'Poppins', sans-serif; font-size: 16px; font-weight: 700;
+            text-transform: uppercase; outline: none; transition: 0.3s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1); background-size: 200% 200%;
         }}
+        
+        .rgb-btn-ultra {{ background-image: linear-gradient(45deg, #FF416C, #FF4B2B, #FF416C); animation: rgbGlow 3s infinite; }}
+        .rgb-btn-high {{ background-image: linear-gradient(45deg, #00B4DB, #0083B0, #2193b0); animation: rgbGlow 3s infinite; }}
+        .rgb-btn-std {{ background-image: linear-gradient(45deg, #11998e, #38ef7d, #11998e); animation: rgbGlow 3s infinite; }}
+        .rgb-btn-default {{ background-image: linear-gradient(45deg, #8E2DE2, #4A00E0, #8E2DE2); animation: rgbGlow 3s infinite; }}
+        
+        .btn-timer {{ background: #333 !important; color: #fff !important; cursor: wait; animation: none; }}
+        .btn-redirect {{ background: #2ecc71 !important; color: white !important; animation: none; }}
 
-        /* Color Variants */
-        .rgb-btn-ultra {{ 
-            background-image: linear-gradient(45deg, #FF416C, #FF4B2B, #FF416C); 
-            animation: rgbGlow 3s ease infinite;
-        }}
-        .rgb-btn-high {{ 
-            background-image: linear-gradient(45deg, #00B4DB, #0083B0, #2193b0); 
-            animation: rgbGlow 3s ease infinite;
-        }}
-        .rgb-btn-std {{ 
-            background-image: linear-gradient(45deg, #11998e, #38ef7d, #11998e); 
-            animation: rgbGlow 3s ease infinite;
-        }}
-        .rgb-btn-default {{ 
-            background-image: linear-gradient(45deg, #8E2DE2, #4A00E0, #8E2DE2); 
-            animation: rgbGlow 3s ease infinite;
-        }}
-        
-        /* State Styles */
-        .dl-rgb-button:hover {{ transform: translateY(-3px); box-shadow: 0 12px 25px rgba(0,0,0,0.25); }}
-        .dl-rgb-button:active {{ transform: scale(0.98); }}
-        
-        .btn-verify {{
-            background: #f1c40f !important;
-            color: #2d3436 !important;
-            animation: none !important;
-            box-shadow: inset 0 0 0 2px rgba(0,0,0,0.1);
-        }}
-        
-        .btn-timer {{
-            background: #2d3436 !important;
-            color: #dfe6e9 !important;
-            animation: none !important;
-            cursor: not-allowed;
-        }}
-        
-        .btn-ready {{
-            background-image: linear-gradient(45deg, #00b894, #00cec9) !important;
-            animation: pulse 2s infinite !important;
-        }}
-
-        .telegram-btn {{ 
-            display: block; margin-top: 30px; 
-            background: #0088cc; color: white; padding: 15px; 
-            border-radius: 50px; text-decoration: none; font-weight: bold; font-size: 16px;
-            box-shadow: 0 5px 15px rgba(0,136,204,0.3);
-            transition: 0.3s;
-        }}
-        .telegram-btn:hover {{ background: #0077b5; transform: translateY(-2px); }}
-        
-        /* Mobile Optimization */
-        @media (max-width: 500px) {{
-            .ins-steps {{ flex-direction: row; font-size: 12px; }}
-            .step-arrow {{ display: none; }}
-            .step-item {{ min-width: auto; margin: 5px; }}
-            .step-icon {{ width: 40px; height: 40px; line-height: 40px; font-size: 20px; }}
-        }}
+        .telegram-btn {{ display: block; margin-top: 20px; background: #0088cc; color: white; padding: 12px; border-radius: 50px; text-decoration: none; font-weight: bold; text-align: center; }}
     </style>
 
     <script>
-    document.addEventListener('DOMContentLoaded', function() {{
+    function startDownload(btn) {{
+        // Prevent double clicks
+        if (btn.getAttribute("data-clicked") === "true") return;
+        btn.setAttribute("data-clicked", "true");
+
         const AD_LINK = "{ad_link}";
-        const TIMER_SECONDS = {TIMER_SECONDS};
-        
-        document.querySelectorAll('.dl-rgb-button').forEach(button => {{
-            button.onclick = function() {{
-                let clickCount = parseInt(this.dataset.clickCount);
-                const originalText = this.querySelector('.btn-text').innerText;
-                const downloadUrl = this.dataset.url;
+        const destinationUrl = btn.getAttribute("data-url");
+        let timeLeft = {TIMER_SECONDS};
+
+        // 1. OPEN AD IMMEDIATELY
+        window.open(AD_LINK, "_blank");
+
+        // 2. CHANGE BUTTON STYLE & START TIMER (No extra click needed)
+        btn.className = "dl-rgb-button btn-timer";
+        btn.innerHTML = "⏳ Please Wait: " + timeLeft + "s";
+
+        const timer = setInterval(() => {{
+            timeLeft--;
+            btn.innerHTML = "⏳ Please Wait: " + timeLeft + "s";
+
+            if (timeLeft <= 0) {{
+                clearInterval(timer);
                 
-                // STEP 1: INITIAL CLICK -> OPEN AD -> CHANGE TO VERIFY
-                if (clickCount === 0) {{
-                    window.open(AD_LINK, "_blank");
-                    
-                    this.className = "dl-rgb-button btn-verify"; // Change style to Verify
-                    this.querySelector('.btn-text').innerText = "↻ Click to Verify";
-                    this.querySelector('.btn-icon').innerText = "🛡️";
-                    this.dataset.clickCount = 1;
+                // 3. AUTO REDIRECT
+                btn.className = "dl-rgb-button btn-redirect";
+                btn.innerHTML = "🚀 Redirecting...";
                 
-                // STEP 2: SECOND CLICK -> START TIMER INSIDE BUTTON
-                }} else if (clickCount === 1) {{
-                    this.className = "dl-rgb-button btn-timer"; // Change style to Timer
-                    let timeLeft = TIMER_SECONDS;
-                    this.querySelector('.btn-icon').innerText = "⏳";
-                    this.querySelector('.btn-text').innerText = `Please Wait: ${{timeLeft}}s`;
-                    
-                    const timer = setInterval(() => {{
-                        timeLeft--;
-                        this.querySelector('.btn-text').innerText = `Please Wait: ${{timeLeft}}s`;
-                        
-                        if (timeLeft <= 0) {{
-                            clearInterval(timer);
-                            // STEP 3: TIMER ENDS -> READY TO DOWNLOAD
-                            this.className = "dl-rgb-button btn-ready"; // Change style to Success
-                            this.querySelector('.btn-icon').innerText = "🚀";
-                            this.querySelector('.btn-text').innerText = "Download Now";
-                            this.dataset.clickCount = 2; // Ready state
-                        }}
-                    }}, 1000);
-                    
-                // STEP 4: FINAL CLICK -> GO TO LINK
-                }} else if (clickCount === 2) {{
-                    window.open(downloadUrl, "_blank");
-                }}
-            }};
-        }});
-    }});
+                // Redirecting current tab to the destination
+                window.location.href = destinationUrl;
+            }}
+        }}, 1000);
+    }}
     </script>
 </div>
 """
@@ -798,12 +688,12 @@ def generate_image(data: dict):
 async def start_command(client, message: Message):
     user_conversations.pop(message.from_user.id, None)
     await message.reply_text(
-        f"👋 **Welcome to the Movie & Series Bot (Ultimate Edition)!**\n\n"
-        f"**✨ Features:**\n"
-        f"✅ RGB Gaming Style Buttons\n"
-        f"✅ Clean Interface (No Gibberish)\n"
-        f"✅ Big 'How to Download' Instructions\n"
-        f"✅ Banner Ad Injection\n\n"
+        f"👋 **Welcome to the Movie & Series Bot (Final Ultimate)!**\n\n"
+        f"**✨ Updates:**\n"
+        f"✅ Auto-Redirect & Timer\n"
+        f"✅ Fixed Mobile Images\n"
+        f"✅ Clean Gaming Buttons\n"
+        f"✅ Banner Ads Injection\n\n"
         f"**Commands:**\n"
         f"1️⃣ `/post <Name>` - Search & Create Post\n"
         f"2️⃣ `/setbanner <code>` - Set your Adsterra/Monetag Banner\n"
