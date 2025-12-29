@@ -297,7 +297,7 @@ def generate_html(data: dict, links: list, user_id: int):
     banner_code = user_banners.get(user_id, "") 
     
     TIMER_SECONDS = 10
-    TELEGRAM_LINK = "https://t.me/YourChannelLink"
+    TELEGRAM_LINK = "https://t.me/+6hvCoblt6CxhZjhl"
     
     # Extract Data
     title = data.get("title") or data.get("name") or "N/A"
