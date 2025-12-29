@@ -273,10 +273,11 @@ def generate_formatted_caption(data: dict):
         
     return caption_text
 
+# 🔥🔥🔥 UPDATED HTML GENERATOR (MODERN, COLORFUL & BIGGER) 🔥🔥🔥
 def generate_html(data: dict, links: list, user_id: int):
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     TIMER_SECONDS = 10
-    INITIAL_DOWNLOADS = 493
+    INITIAL_DOWNLOADS = 1493
     TELEGRAM_LINK = "https://t.me/YourChannelLink"
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
@@ -290,10 +291,11 @@ def generate_html(data: dict, links: list, user_id: int):
     else:
         poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
+    # --- Cast Section (With Circular Images) ---
     cast_html = ""
     cast_members = data.get("credits", {}).get("cast", [])
     if cast_members:
-        cast_html += '<h3 style="text-align:center; margin-top: 25px;">🎭 Meet the Cast 🎭</h3>'
+        cast_html += '<h3 style="text-align:center; font-family: Poppins, sans-serif; color: #333; margin-top: 30px;">🎭 Star Cast 🎭</h3>'
         cast_html += '<div class="cast-container">'
         for member in cast_members[:8]:
             member_name = member.get("name")
@@ -301,65 +303,210 @@ def generate_html(data: dict, links: list, user_id: int):
             member_image_url = f"https://image.tmdb.org/t/p/w185{profile_path}" if profile_path else "https://via.placeholder.com/185x278.png?text=No+Image"
             cast_html += f"""
             <div class="cast-member">
-                <img src="{member_image_url}" alt="{member_name}" class="cast-photo">
+                <div class="img-wrapper"><img src="{member_image_url}" alt="{member_name}"></div>
                 <p class="cast-name">{member_name}</p>
             </div>
             """
         cast_html += '</div>'
 
+    # --- Download Buttons Logic (Colorful Gradients) ---
     download_blocks_html = ""
     for link in links:
+        # Determine Color based on Label text
+        label_lower = link['label'].lower()
+        if "1080" in label_lower or "4k" in label_lower:
+            # Red/Orange Gradient for High Quality
+            btn_gradient = "linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%)"
+        elif "720" in label_lower:
+            # Blue Gradient for Standard Quality
+            btn_gradient = "linear-gradient(135deg, #00B4DB 0%, #0083B0 100%)"
+        elif "480" in label_lower:
+            # Green Gradient for Low Quality
+            btn_gradient = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
+        else:
+            # Default Purple/Indigo
+            btn_gradient = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+
         download_blocks_html += f"""
         <div class="dl-download-block">
-            <button class="dl-download-button" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">⬇️ {link['label']}</button>
-            <div class="dl-timer-display"></div>
-            <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">✅ Get {link['label']}</a>
+            <div class="dl-info-badge">🚀 Fast Speed</div>
+            <button class="dl-download-button" style="background: {btn_gradient};" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">
+                <span class="btn-icon">📥</span> 
+                <span class="btn-text">{link['label']}</span>
+                <span class="btn-sub">Click to Download</span>
+            </button>
+            <div class="dl-timer-display">⏳ Please Wait...</div>
+            <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">
+                🚀 GET LINK NOW
+            </a>
         </div>
         """
 
     final_html = f"""
 <!-- Bot Generated Content Starts -->
-<div style="text-align: center;">
-    <img src="{poster_url}" alt="{title} Poster" style="max-width: 280px; border-radius: 8px; margin-bottom: 15px;">
-    <h2>{title} ({year}) - {language}</h2>
-    <p style="text-align: left; padding: 0 10px;">{overview}</p>
-</div>
-<!--more-->
-{cast_html}
-<div class="dl-body" style="font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center;">
-    <style>
-        .cast-container {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; margin-top: 20px; padding: 10px; }}
-        .cast-member {{ text-align: center; width: 100px; }}
-        .cast-photo {{ width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-        .cast-name {{ font-size: 13px; font-weight: 500; color: #333; margin-top: 8px; }}
-        .dl-main-content {{ width: 100%; max-width: 500px; margin: auto; }}
-        .dl-post-container {{ background: #ffffff; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1); border: 1px solid #e7eaf3; }}
-        .dl-instruction-box {{ background-color: #fffbe6; border: 1px solid #ffe58f; color: #333; padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: center; }}
-        .dl-download-block {{ border: 1px solid #ddd; border-radius: 12px; padding: 15px; margin-bottom: 15px; }}
-        .dl-download-button, .dl-real-download-link {{ display: block; width: 100%; padding: 15px; text-align: center; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.3s; box-sizing: border-box; }}
-        .dl-download-button {{ background: #ff5722; color: white !important; border: none; }}
-        .dl-real-download-link {{ background: #4caf50; color: white !important; display: none; }}
-        .dl-telegram-link {{ display: block; width: 100%; padding: 15px; text-align: center; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.3s; box-sizing: border-box; background: #0088cc; color: white !important; margin-top: 20px; }}
-        .dl-timer-display {{ margin-top: 10px; font-size: 18px; font-weight: bold; color: #d32f2f; background: #f0f0f0; padding: 12px; border-radius: 10px; text-align: center; display: none; }}
-        .dl-download-count-text {{ margin-top: 20px; font-size: 15px; color: #555; text-align: center; }}
-    </style>
-    <div class="dl-main-content">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+<div style="font-family: 'Poppins', sans-serif; max-width: 600px; margin: auto;">
+    
+    <div style="text-align: center; background: #fff; padding: 20px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+        <img src="{poster_url}" alt="{title} Poster" style="width: 100%; max-width: 250px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.2);">
+        <h2 style="color: #2c3e50; margin-top: 15px; font-size: 24px;">{title} ({year})</h2>
+        <div style="display: inline-block; background: #eee; padding: 5px 15px; border-radius: 20px; font-size: 14px; font-weight: 600; color: #555; margin-bottom: 10px;">
+            {language}
+        </div>
+        <p style="text-align: justify; color: #555; font-size: 15px; line-height: 1.6;">{overview}</p>
+    </div>
+
+    <!--more-->
+    
+    {cast_html}
+
+    <div class="dl-body">
+        <style>
+            .dl-body {{ font-family: 'Poppins', sans-serif; margin-top: 30px; }}
+            
+            /* Cast Styles */
+            .cast-container {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; padding: 10px; }}
+            .cast-member {{ text-align: center; width: 90px; }}
+            .img-wrapper {{ width: 80px; height: 80px; border-radius: 50%; overflow: hidden; margin: 0 auto; border: 3px solid #fff; box-shadow: 0 5px 15px rgba(0,0,0,0.1); transition: transform 0.3s; }}
+            .cast-member:hover .img-wrapper {{ transform: scale(1.1); }}
+            .cast-photo {{ width: 100%; height: 100%; object-fit: cover; }}
+            .cast-name {{ font-size: 12px; font-weight: 600; color: #444; margin-top: 8px; line-height: 1.2; }}
+
+            /* Download Section Styles */
+            .dl-post-container {{ 
+                background: #ffffff; 
+                padding: 25px; 
+                border-radius: 25px; 
+                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); 
+                border: 1px solid #f0f0f0; 
+                position: relative;
+                overflow: hidden;
+            }}
+            
+            .dl-instruction-box {{ 
+                background: linear-gradient(to right, #fffbe6, #fff); 
+                border-left: 5px solid #ffe58f; 
+                color: #444; 
+                padding: 15px; 
+                border-radius: 8px; 
+                margin-bottom: 30px; 
+                text-align: left;
+                font-size: 14px;
+            }}
+            .dl-instruction-box h2 {{ margin: 0 0 5px 0; font-size: 18px; color: #d48806; }}
+
+            .dl-download-block {{ 
+                position: relative;
+                margin-bottom: 25px; 
+                padding: 5px;
+            }}
+
+            .dl-info-badge {{
+                position: absolute;
+                top: -10px;
+                right: 10px;
+                background: #ff4757;
+                color: white;
+                font-size: 10px;
+                padding: 2px 8px;
+                border-radius: 10px;
+                font-weight: bold;
+                z-index: 2;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            }}
+
+            .dl-download-button, .dl-real-download-link {{ 
+                display: flex; 
+                flex-direction: column; 
+                align-items: center; 
+                justify-content: center;
+                width: 100%; 
+                padding: 18px 15px; 
+                text-align: center; 
+                border-radius: 15px; 
+                cursor: pointer; 
+                text-decoration: none; 
+                transition: all 0.3s ease; 
+                box-sizing: border-box; 
+                border: none;
+                color: white !important;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+                position: relative;
+                overflow: hidden;
+            }}
+
+            .dl-download-button:hover {{ 
+                transform: translateY(-5px); 
+                box-shadow: 0 15px 30px rgba(0,0,0,0.25); 
+                filter: brightness(1.1);
+            }}
+
+            .btn-text {{ font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }}
+            .btn-sub {{ font-size: 12px; opacity: 0.9; margin-top: 2px; font-weight: 400; }}
+            .btn-icon {{ font-size: 24px; margin-bottom: 5px; }}
+
+            .dl-real-download-link {{ 
+                background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+                display: none; 
+                font-size: 20px;
+                font-weight: bold;
+            }}
+
+            .dl-timer-display {{ 
+                margin-top: 0; 
+                font-size: 16px; 
+                font-weight: bold; 
+                color: #333; 
+                background: #f8f9fa; 
+                padding: 15px; 
+                border-radius: 12px; 
+                text-align: center; 
+                display: none; 
+                border: 2px dashed #ddd;
+            }}
+            
+            .dl-telegram-link {{
+                display: block;
+                background: #0088cc;
+                color: white !important;
+                text-align: center;
+                padding: 15px;
+                border-radius: 50px;
+                text-decoration: none;
+                font-weight: bold;
+                margin-top: 30px;
+                box-shadow: 0 5px 15px rgba(0, 136, 204, 0.4);
+                transition: 0.3s;
+            }}
+            .dl-telegram-link:hover {{ transform: scale(1.02); }}
+
+        </style>
+
         <div class="dl-post-container">
             <div class="dl-instruction-box">
-                <h2>🎬 ডাউনলোড করার নিয়মাবলী</h2>
-                <p>প্রথমবার ক্লিক করলে একটি বিজ্ঞাপন খুলবে।</p>
-                <p>দ্বিতীয়বার ক্লিক করলে <strong>টাইমার</strong> শুরু হবে।</p>
-                <p>টাইমার শেষ হলে আপনি ডাউনলোড লিঙ্কটি পাবেন।</p>
+                <h2>⚡ ডাউনলোড করার নিয়ম:</h2>
+                1. ডাউনলোড বাটনে ক্লিক করুন।<br>
+                2. ১০ সেকেন্ড অপেক্ষা করুন।<br>
+                3. "Get Link" বাটন আসলে ডাউনলোড শুরু হবে।
             </div>
+
             {download_blocks_html}
-            <div class="dl-download-count-text">✅ মোট ডাউনলোড: <span id="download-counter">{INITIAL_DOWNLOADS}</span></div>
-            <a class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank" rel="noopener noreferrer">💋 Join Telegram Channel</a>
+
+            <div style="text-align: center; margin-top: 25px; color: #888; font-size: 14px;">
+                ✅ Total Downloads: <b style="color: #333;"><span id="download-counter">{INITIAL_DOWNLOADS}</span>+</b>
+            </div>
+
+            <a class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank">
+                💌 Join Our Telegram Channel
+            </a>
         </div>
     </div>
+
     <script>
     document.addEventListener('DOMContentLoaded', function() {{
         const AD_LINK = "{ad_link}";
         const TIMER_SECONDS = {TIMER_SECONDS};
+        
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
                 let clickCount = parseInt(button.dataset.clickCount);
@@ -367,23 +514,31 @@ def generate_html(data: dict, links: list, user_id: int):
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
                 const downloadUrl = button.dataset.url;
+                
                 if (clickCount === 0) {{
                     window.open(AD_LINK, "_blank");
-                    button.innerText = "Click Again to Start Timer";
+                    button.querySelector('.btn-text').innerText = "↻ Click Again to Start";
+                    button.querySelector('.btn-sub').innerText = "Verification Complete";
+                    button.style.background = "linear-gradient(135deg, #333 0%, #555 100%)"; // Change color to grey
                     button.dataset.clickCount = 1;
                 }} else if (clickCount === 1) {{
                     button.style.display = 'none';
                     timerDisplay.style.display = 'block';
+                    timerDisplay.innerHTML = `<div style="font-size:24px;">⏳</div> Generating Link: ${{TIMER_SECONDS}}s`;
+                    
                     realDownloadLink.href = downloadUrl;
                     let timeLeft = TIMER_SECONDS;
-                    timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
+                    
                     const timer = setInterval(() => {{
                         timeLeft--;
-                        timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
+                        timerDisplay.innerHTML = `<div style="font-size:24px;">⏳</div> Generating Link: ${{timeLeft}}s`;
+                        
                         if (timeLeft <= 0) {{
                             clearInterval(timer);
                             timerDisplay.style.display = 'none';
-                            realDownloadLink.style.display = 'block';
+                            realDownloadLink.style.display = 'flex'; 
+                            
+                            // Fake counter increment
                             const counter = document.getElementById('download-counter');
                             if(counter) {{ counter.innerText = parseInt(counter.innerText) + 1; }}
                         }}
