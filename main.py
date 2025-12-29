@@ -51,12 +51,17 @@ except (ValueError, TypeError):
 # ---- GLOBAL VARIABLES for state management ----
 user_conversations = {}
 user_channels = {}
-USER_AD_LINKS_FILE = "user_ad_links.json"
-DEFAULT_AD_LINK = "https://www.google.com"
-user_ad_links = {}
 
-# --- CHANNEL POST CONFIGURATION ---
+# -- File Handling Configuration --
+USER_AD_LINKS_FILE = "user_ad_links.json"
+USER_BANNER_FILE = "user_banners.json" # 🔥 NEW: For Saving Banner Ads
 USER_PROMO_CONFIG_FILE = "user_promo_config.json"
+
+DEFAULT_AD_LINK = "https://www.google.com"
+
+# -- Data Containers --
+user_ad_links = {}
+user_banners = {} # 🔥 NEW: Banner Dictionary
 user_promo_config = {} 
 
 # ---- FUNCTIONS to save and load user-specific data ----
@@ -76,6 +81,24 @@ def load_user_ad_links():
                 logger.info("✅ User ad links loaded.")
         except (IOError, json.JSONDecodeError) as e:
             logger.warning(f"⚠️ Error loading user ad links: {e}")
+
+# 🔥 NEW: Save/Load Functions for Banner Ads
+def save_user_banners():
+    try:
+        with open(USER_BANNER_FILE, "w") as f:
+            json.dump(user_banners, f, indent=4)
+    except IOError as e:
+        logger.warning(f"⚠️ Error saving banners: {e}")
+
+def load_user_banners():
+    global user_banners
+    if os.path.exists(USER_BANNER_FILE):
+        try:
+            with open(USER_BANNER_FILE, "r") as f:
+                user_banners = {int(k): v for k, v in json.load(f).items()}
+                logger.info("✅ User banners loaded.")
+        except (IOError, json.JSONDecodeError) as e:
+            logger.warning(f"⚠️ Error loading banners: {e}")
 
 def save_promo_config():
     try:
@@ -198,7 +221,8 @@ def search_tmdb(query: str):
 
 def get_tmdb_details(media_type: str, media_id: int):
     try:
-        details_url = f"https://api.themoviedb.org/3/{media_type}/{media_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,similar"
+        # 🔥 UPDATED: Added 'images' to fetch screenshots
+        details_url = f"https://api.themoviedb.org/3/{media_type}/{media_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,similar,images"
         response = requests.get(details_url, timeout=10)
         response.raise_for_status()
         return response.json()
@@ -273,16 +297,21 @@ def generate_formatted_caption(data: dict):
         
     return caption_text
 
-# 🔥🔥🔥 UPDATED HTML GENERATOR (MODERN, COLORFUL & BIGGER) 🔥🔥🔥
+# 🔥🔥🔥 REPLACED: NEW ULTRA PRO HTML GENERATOR 🔥🔥🔥
+# Features: SEO Schema, Trailers, Screenshots, Banner Ads, Colorful Buttons
 def generate_html(data: dict, links: list, user_id: int):
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
+    banner_code = user_banners.get(user_id, "") # Fetch User Banner Code
+    
     TIMER_SECONDS = 10
-    INITIAL_DOWNLOADS = 1493
     TELEGRAM_LINK = "https://t.me/YourChannelLink"
+    
+    # Extract Data
     title = data.get("title") or data.get("name") or "N/A"
     year = (data.get("release_date") or data.get("first_air_date") or "----")[:4]
     language = data.get('custom_language', '').title()
     overview = data.get("overview", "No overview available.")
+    rating = f"{data.get('vote_average', 0):.1f}"
     
     if data.get('manual_poster_url'):
         poster_url = data['manual_poster_url']
@@ -291,222 +320,156 @@ def generate_html(data: dict, links: list, user_id: int):
     else:
         poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
 
-    # --- Cast Section (With Circular Images) ---
+    # 1. SEO Schema Markup (Google Ranking)
+    schema_markup = f"""
+    <script type="application/ld+json">
+    {{
+      "@context": "https://schema.org",
+      "@type": "Movie",
+      "name": "{title}",
+      "image": "{poster_url}",
+      "description": "{overview[:150]}...",
+      "datePublished": "{year}",
+      "aggregateRating": {{
+        "@type": "AggregateRating",
+        "ratingValue": "{rating}",
+        "bestRating": "10",
+        "ratingCount": "100"
+      }}
+    }}
+    </script>
+    """
+
+    # 2. YouTube Trailer Logic
+    trailer_html = ""
+    videos = data.get("videos", {}).get("results", [])
+    if trailer_key := next((v['key'] for v in videos if v['type'] == 'Trailer' and v['site'] == 'YouTube'), None):
+        trailer_html = f"""
+        <div class="video-container">
+            <h3>🎬 Official Trailer</h3>
+            <iframe src="https://www.youtube.com/embed/{trailer_key}" allowfullscreen></iframe>
+        </div>
+        """
+
+    # 3. Screenshot Gallery Logic
+    gallery_html = ""
+    backdrops = data.get("images", {}).get("backdrops", [])
+    if backdrops:
+        gallery_html += '<h3 style="text-align:center; font-family: Poppins; margin-top: 30px;">📸 Screenshots</h3><div class="gallery-container">'
+        for img in backdrops[:4]: # Top 4
+            img_url = f"https://image.tmdb.org/t/p/w300{img['file_path']}"
+            gallery_html += f'<img src="{img_url}" class="gallery-img">'
+        gallery_html += '</div>'
+
+    # 4. Cast Section
     cast_html = ""
     cast_members = data.get("credits", {}).get("cast", [])
     if cast_members:
-        cast_html += '<h3 style="text-align:center; font-family: Poppins, sans-serif; color: #333; margin-top: 30px;">🎭 Star Cast 🎭</h3>'
-        cast_html += '<div class="cast-container">'
-        for member in cast_members[:8]:
-            member_name = member.get("name")
-            profile_path = member.get("profile_path")
-            member_image_url = f"https://image.tmdb.org/t/p/w185{profile_path}" if profile_path else "https://via.placeholder.com/185x278.png?text=No+Image"
-            cast_html += f"""
-            <div class="cast-member">
-                <div class="img-wrapper"><img src="{member_image_url}" alt="{member_name}"></div>
-                <p class="cast-name">{member_name}</p>
-            </div>
-            """
+        cast_html += '<h3 style="text-align:center; font-family: Poppins; margin-top: 30px;">🎭 Top Cast</h3><div class="cast-container">'
+        for member in cast_members[:6]:
+            pic = f"https://image.tmdb.org/t/p/w185{member['profile_path']}" if member.get("profile_path") else "https://via.placeholder.com/100"
+            cast_html += f'<div class="cast-member"><img src="{pic}"><p>{member["name"]}</p></div>'
         cast_html += '</div>'
 
-    # --- Download Buttons Logic (Colorful Gradients) ---
+    # 5. Colorful Download Buttons
     download_blocks_html = ""
     for link in links:
-        # Determine Color based on Label text
-        label_lower = link['label'].lower()
-        if "1080" in label_lower or "4k" in label_lower:
-            # Red/Orange Gradient for High Quality
-            btn_gradient = "linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%)"
-        elif "720" in label_lower:
-            # Blue Gradient for Standard Quality
-            btn_gradient = "linear-gradient(135deg, #00B4DB 0%, #0083B0 100%)"
-        elif "480" in label_lower:
-            # Green Gradient for Low Quality
-            btn_gradient = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
-        else:
-            # Default Purple/Indigo
-            btn_gradient = "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+        lbl = link['label'].lower()
+        # Gradient Color Logic
+        if "1080" in lbl or "4k" in lbl: grad = "linear-gradient(135deg, #FF416C, #FF4B2B)"
+        elif "720" in lbl: grad = "linear-gradient(135deg, #00B4DB, #0083B0)"
+        elif "480" in lbl: grad = "linear-gradient(135deg, #11998e, #38ef7d)"
+        else: grad = "linear-gradient(135deg, #667eea, #764ba2)"
 
         download_blocks_html += f"""
         <div class="dl-download-block">
-            <div class="dl-info-badge">🚀 Fast Speed</div>
-            <button class="dl-download-button" style="background: {btn_gradient};" data-url="{link['url']}" data-label="{link['label']}" data-click-count="0">
-                <span class="btn-icon">📥</span> 
-                <span class="btn-text">{link['label']}</span>
-                <span class="btn-sub">Click to Download</span>
+            <div class="dl-info-badge">🚀 High Speed</div>
+            <button class="dl-download-button" style="background: {grad};" data-url="{link['url']}" data-click-count="0">
+                <span class="btn-icon">⚡</span> <span class="btn-text">{link['label']}</span>
             </button>
-            <div class="dl-timer-display">⏳ Please Wait...</div>
-            <a href="#" class="dl-real-download-link" target="_blank" rel="noopener noreferrer">
-                🚀 GET LINK NOW
-            </a>
+            <div class="dl-timer-display">⏳ Collecting Link...</div>
+            <a href="#" class="dl-real-download-link" target="_blank">✅ DOWNLOAD NOW</a>
+        </div>
+        """
+
+    # 6. Banner Ad Injection Logic
+    banner_section = ""
+    if banner_code:
+        banner_section = f"""
+        <div style="text-align:center; margin: 20px 0; background:#f9f9f9; padding:10px; border-radius:8px;">
+            <small>Sponsored</small><br>
+            {banner_code}
         </div>
         """
 
     final_html = f"""
-<!-- Bot Generated Content Starts -->
+{schema_markup}
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-<div style="font-family: 'Poppins', sans-serif; max-width: 600px; margin: auto;">
-    
-    <div style="text-align: center; background: #fff; padding: 20px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
-        <img src="{poster_url}" alt="{title} Poster" style="width: 100%; max-width: 250px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.2);">
-        <h2 style="color: #2c3e50; margin-top: 15px; font-size: 24px;">{title} ({year})</h2>
-        <div style="display: inline-block; background: #eee; padding: 5px 15px; border-radius: 20px; font-size: 14px; font-weight: 600; color: #555; margin-bottom: 10px;">
-            {language}
+<div class="movie-post-wrapper">
+    <div class="movie-header">
+        <img src="{poster_url}" class="main-poster">
+        <div class="movie-info">
+            <h1>{title} ({year})</h1>
+            <div class="badges"><span class="badge lang">{language}</span><span class="badge imdb">⭐ {rating}/10</span></div>
+            <p class="overview">{overview}</p>
         </div>
-        <p style="text-align: justify; color: #555; font-size: 15px; line-height: 1.6;">{overview}</p>
     </div>
-
+    
+    {banner_section} <!-- AD SLOT 1 -->
+    
     <!--more-->
-    
+    {trailer_html}
     {cast_html}
+    {gallery_html}
 
-    <div class="dl-body">
-        <style>
-            .dl-body {{ font-family: 'Poppins', sans-serif; margin-top: 30px; }}
-            
-            /* Cast Styles */
-            .cast-container {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; padding: 10px; }}
-            .cast-member {{ text-align: center; width: 90px; }}
-            .img-wrapper {{ width: 80px; height: 80px; border-radius: 50%; overflow: hidden; margin: 0 auto; border: 3px solid #fff; box-shadow: 0 5px 15px rgba(0,0,0,0.1); transition: transform 0.3s; }}
-            .cast-member:hover .img-wrapper {{ transform: scale(1.1); }}
-            .cast-photo {{ width: 100%; height: 100%; object-fit: cover; }}
-            .cast-name {{ font-size: 12px; font-weight: 600; color: #444; margin-top: 8px; line-height: 1.2; }}
-
-            /* Download Section Styles */
-            .dl-post-container {{ 
-                background: #ffffff; 
-                padding: 25px; 
-                border-radius: 25px; 
-                box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); 
-                border: 1px solid #f0f0f0; 
-                position: relative;
-                overflow: hidden;
-            }}
-            
-            .dl-instruction-box {{ 
-                background: linear-gradient(to right, #fffbe6, #fff); 
-                border-left: 5px solid #ffe58f; 
-                color: #444; 
-                padding: 15px; 
-                border-radius: 8px; 
-                margin-bottom: 30px; 
-                text-align: left;
-                font-size: 14px;
-            }}
-            .dl-instruction-box h2 {{ margin: 0 0 5px 0; font-size: 18px; color: #d48806; }}
-
-            .dl-download-block {{ 
-                position: relative;
-                margin-bottom: 25px; 
-                padding: 5px;
-            }}
-
-            .dl-info-badge {{
-                position: absolute;
-                top: -10px;
-                right: 10px;
-                background: #ff4757;
-                color: white;
-                font-size: 10px;
-                padding: 2px 8px;
-                border-radius: 10px;
-                font-weight: bold;
-                z-index: 2;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            }}
-
-            .dl-download-button, .dl-real-download-link {{ 
-                display: flex; 
-                flex-direction: column; 
-                align-items: center; 
-                justify-content: center;
-                width: 100%; 
-                padding: 18px 15px; 
-                text-align: center; 
-                border-radius: 15px; 
-                cursor: pointer; 
-                text-decoration: none; 
-                transition: all 0.3s ease; 
-                box-sizing: border-box; 
-                border: none;
-                color: white !important;
-                box-shadow: 0 10px 20px rgba(0,0,0,0.15);
-                position: relative;
-                overflow: hidden;
-            }}
-
-            .dl-download-button:hover {{ 
-                transform: translateY(-5px); 
-                box-shadow: 0 15px 30px rgba(0,0,0,0.25); 
-                filter: brightness(1.1);
-            }}
-
-            .btn-text {{ font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }}
-            .btn-sub {{ font-size: 12px; opacity: 0.9; margin-top: 2px; font-weight: 400; }}
-            .btn-icon {{ font-size: 24px; margin-bottom: 5px; }}
-
-            .dl-real-download-link {{ 
-                background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
-                display: none; 
-                font-size: 20px;
-                font-weight: bold;
-            }}
-
-            .dl-timer-display {{ 
-                margin-top: 0; 
-                font-size: 16px; 
-                font-weight: bold; 
-                color: #333; 
-                background: #f8f9fa; 
-                padding: 15px; 
-                border-radius: 12px; 
-                text-align: center; 
-                display: none; 
-                border: 2px dashed #ddd;
-            }}
-            
-            .dl-telegram-link {{
-                display: block;
-                background: #0088cc;
-                color: white !important;
-                text-align: center;
-                padding: 15px;
-                border-radius: 50px;
-                text-decoration: none;
-                font-weight: bold;
-                margin-top: 30px;
-                box-shadow: 0 5px 15px rgba(0, 136, 204, 0.4);
-                transition: 0.3s;
-            }}
-            .dl-telegram-link:hover {{ transform: scale(1.02); }}
-
-        </style>
-
-        <div class="dl-post-container">
-            <div class="dl-instruction-box">
-                <h2>⚡ ডাউনলোড করার নিয়ম:</h2>
-                1. ডাউনলোড বাটনে ক্লিক করুন।<br>
-                2. ১০ সেকেন্ড অপেক্ষা করুন।<br>
-                3. "Get Link" বাটন আসলে ডাউনলোড শুরু হবে।
-            </div>
-
+    <div class="dl-section">
+        <div class="dl-box">
+            <h2 class="dl-title">📥 Download Links</h2>
+            <p class="dl-note">Click the button below and wait {TIMER_SECONDS} seconds.</p>
             {download_blocks_html}
-
-            <div style="text-align: center; margin-top: 25px; color: #888; font-size: 14px;">
-                ✅ Total Downloads: <b style="color: #333;"><span id="download-counter">{INITIAL_DOWNLOADS}</span>+</b>
-            </div>
-
-            <a class="dl-telegram-link" href="{TELEGRAM_LINK}" target="_blank">
-                💌 Join Our Telegram Channel
-            </a>
+            {banner_section} <!-- AD SLOT 2 -->
+            <a class="telegram-btn" href="{TELEGRAM_LINK}" target="_blank">✈️ Join Telegram Channel</a>
         </div>
     </div>
+
+    <style>
+        .movie-post-wrapper {{ font-family: 'Poppins', sans-serif; color: #333; max-width: 700px; margin: auto; }}
+        .movie-header {{ display: flex; flex-wrap: wrap; gap: 20px; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }}
+        .main-poster {{ width: 100%; max-width: 180px; border-radius: 10px; object-fit: cover; margin: auto; }}
+        .movie-info {{ flex: 1; min-width: 250px; }}
+        .movie-info h1 {{ font-size: 24px; color: #222; margin-bottom: 10px; }}
+        .overview {{ font-size: 14px; color: #555; line-height: 1.6; text-align: justify; }}
+        .badges {{ margin-bottom: 15px; }}
+        .badge {{ padding: 5px 12px; border-radius: 50px; font-size: 12px; font-weight: bold; margin-right: 5px; }}
+        .lang {{ background: #e3f2fd; color: #1976d2; }} .imdb {{ background: #fff3e0; color: #f57c00; }}
+        
+        .video-container {{ position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin-top: 30px; border-radius: 12px; }}
+        .video-container iframe {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }}
+        
+        .gallery-container {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px; }}
+        .gallery-img {{ width: 100%; border-radius: 8px; transition:0.3s; }}
+        .gallery-img:hover {{ transform: scale(1.02); }}
+        
+        .cast-container {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; padding: 10px; }}
+        .cast-member {{ text-align: center; width: 80px; font-size: 11px; }}
+        .cast-member img {{ width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #eee; }}
+        
+        .dl-section {{ margin-top: 40px; }}
+        .dl-box {{ background: #fff; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #eee; text-align: center; }}
+        .dl-note {{ background: #fff8e1; display: inline-block; padding: 5px 15px; border-radius: 5px; font-size: 13px; color: #856404; margin-bottom: 20px; }}
+        
+        .dl-download-block {{ position: relative; margin-bottom: 20px; }}
+        .dl-info-badge {{ position: absolute; top: -10px; right: 10px; background: #ff4757; color: white; font-size: 9px; padding: 3px 8px; border-radius: 10px; font-weight: bold; z-index: 2; }}
+        .dl-download-button, .dl-real-download-link {{ width: 100%; padding: 15px; border-radius: 12px; cursor: pointer; text-decoration: none; color: white !important; display: block; border: none; font-size: 18px; font-weight: bold; box-shadow: 0 8px 15px rgba(0,0,0,0.1); transition: 0.2s; box-sizing: border-box; }}
+        .dl-real-download-link {{ background: #28a745; display: none; }}
+        .dl-timer-display {{ margin: 10px 0; font-weight: bold; color: #d32f2f; display: none; }}
+        .telegram-btn {{ display: block; margin-top: 25px; background: #0088cc; color: white; padding: 12px; border-radius: 50px; text-decoration: none; font-weight: bold; }}
+    </style>
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {{
         const AD_LINK = "{ad_link}";
         const TIMER_SECONDS = {TIMER_SECONDS};
-        
         document.querySelectorAll('.dl-download-button').forEach(button => {{
             button.onclick = () => {{
                 let clickCount = parseInt(button.dataset.clickCount);
@@ -514,33 +477,24 @@ def generate_html(data: dict, links: list, user_id: int):
                 const timerDisplay = block.querySelector('.dl-timer-display');
                 const realDownloadLink = block.querySelector('.dl-real-download-link');
                 const downloadUrl = button.dataset.url;
-                
                 if (clickCount === 0) {{
                     window.open(AD_LINK, "_blank");
-                    button.querySelector('.btn-text').innerText = "↻ Click Again to Start";
-                    button.querySelector('.btn-sub').innerText = "Verification Complete";
-                    button.style.background = "linear-gradient(135deg, #333 0%, #555 100%)"; // Change color to grey
+                    button.querySelector('.btn-text').innerText = "↻ Click to Verify";
+                    button.style.background = "#555";
                     button.dataset.clickCount = 1;
                 }} else if (clickCount === 1) {{
                     button.style.display = 'none';
                     timerDisplay.style.display = 'block';
-                    timerDisplay.innerHTML = `<div style="font-size:24px;">⏳</div> Generating Link: ${{TIMER_SECONDS}}s`;
-                    
                     realDownloadLink.href = downloadUrl;
                     let timeLeft = TIMER_SECONDS;
-                    
+                    timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
                     const timer = setInterval(() => {{
                         timeLeft--;
-                        timerDisplay.innerHTML = `<div style="font-size:24px;">⏳</div> Generating Link: ${{timeLeft}}s`;
-                        
+                        timerDisplay.innerText = `Please Wait: ${{timeLeft}}s`;
                         if (timeLeft <= 0) {{
                             clearInterval(timer);
                             timerDisplay.style.display = 'none';
-                            realDownloadLink.style.display = 'flex'; 
-                            
-                            // Fake counter increment
-                            const counter = document.getElementById('download-counter');
-                            if(counter) {{ counter.innerText = parseInt(counter.innerText) + 1; }}
+                            realDownloadLink.style.display = 'block';
                         }}
                     }}, 1000);
                     button.dataset.clickCount = 2;
@@ -550,7 +504,6 @@ def generate_html(data: dict, links: list, user_id: int):
     }});
     </script>
 </div>
-<!-- Bot Generated Content Ends -->
 """
     return final_html
 
@@ -659,18 +612,16 @@ def generate_image(data: dict):
 async def start_command(client, message: Message):
     user_conversations.pop(message.from_user.id, None)
     await message.reply_text(
-        f"👋 **Welcome to the Movie & Series Bot!**\n\n"
-        f"**New:** Use `/post` to create content easily!\n\n"
+        f"👋 **Welcome to the Movie & Series Bot (Pro Version)!**\n\n"
+        f"**✨ New Features:**\n"
+        f"✅ Auto Trailer & Screenshots\n"
+        f"✅ Banner Ad Injection\n"
+        f"✅ SEO Schema & Gradient Buttons\n\n"
         f"**Commands:**\n"
-        f"1️⃣ `/post <Name>` - Search by Name (e.g. `/post Inception`)\n"
-        f"2️⃣ `/post <Link>` - By TMDB Link (e.g. `/post https://...`)\n"
-        f"3️⃣ `/post <IMDb>` - By IMDb Link/ID (e.g. `/post https://imdb...`)\n\n"
-        "**Other Commands:**\n"
-        "`/filedl` - 🆕 Create FilesDL Style Button Post\n"
-        "`/poster` - Get HD posters.\n"
-        "`/setchannel` - Set main channel.\n"
-        "`/manual` - Add content manually.\n"
-        "`/setadlink` - Update ad link.\n\n"
+        f"1️⃣ `/post <Name>` - Search & Create Post\n"
+        f"2️⃣ `/setbanner <code>` - Set your Adsterra/Monetag Banner\n"
+        f"3️⃣ `/setadlink <url>` - Set Verification Link\n"
+        f"4️⃣ `/manual` - Manual Post\n\n"
         "**Auto-Post Config:**\n"
         "`/setpromochannel`, `/setpromoname`, `/setwatchlink`..."
     )
@@ -761,6 +712,19 @@ async def set_ad_link_command(_, message: Message):
         await message.reply_text(f"✅ **Ad Link Updated!**")
     else:
         await message.reply_text("⚠️ **Usage:** `/setadlink https://your-ad-link.com`")
+
+# 🔥 NEW: Set Banner Ad Command
+@bot.on_message(filters.command("setbanner") & filters.private)
+async def set_banner_command(_, message: Message):
+    user_id = message.from_user.id
+    if len(message.command) > 1:
+        # Get everything after the command
+        code = message.text.split(None, 1)[1]
+        user_banners[user_id] = code
+        save_user_banners()
+        await message.reply_text("✅ **Banner Ad Code Saved!**\nIt will now appear automatically in your posts.")
+    else:
+        await message.reply_text("⚠️ Usage:\n`/setbanner <script src='...'>`\n\nPaste your Adsterra/Monetag HTML code.")
 
 # ---- FILEDL COMMAND HANDLERS (UPDATED TO USE LINK) ----
 @bot.on_message(filters.command("filedl") & filters.private)
@@ -1037,7 +1001,7 @@ async def selection_callback(client, cb):
     filters.private & 
     ~filters.command([
         "start", "poster", "setchannel", "cancel", "manual", "setadlink", "details", "filedl", "post",
-        "setpromochannel", "setpromoname", "setwatchlink", "setdownloadlink", "setrequestlink"
+        "setpromochannel", "setpromoname", "setwatchlink", "setdownloadlink", "setrequestlink", "setbanner"
     ])
 )
 async def conversation_text_handler(client, message: Message):
@@ -1312,6 +1276,7 @@ if __name__ == "__main__":
     logger.info("🚀 Starting the bot...")
     load_user_ad_links()
     load_promo_config()
+    load_user_banners() # Load Banners at startup
     flask_thread = Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
