@@ -171,7 +171,7 @@ def create_paste_link(content: str):
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (RGB & Auto Redirect) is running!"
+    return "✅ Final Bot (Poster Fix + Auto Redirect) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -291,13 +291,13 @@ def generate_formatted_caption(data: dict):
         
     return caption_text
 
-# 🔥🔥🔥 REPLACED: FIXED IMAGE, AUTO REDIRECT & BANNER INJECTION 🔥🔥🔥
+# 🔥🔥🔥 REPLACED: POSTER FORCE FIX, AUTO REDIRECT & BANNER 🔥🔥🔥
 def generate_html(data: dict, links: list, user_id: int):
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     banner_code = user_banners.get(user_id, "") 
     
     TIMER_SECONDS = 10  # টাইমার ১০ সেকেন্ড
-    TELEGRAM_LINK = "https://t.me/YourChannelLink"
+    TELEGRAM_LINK = "https://t.me/+6hvCoblt6CxhZjhl"
     
     # Extract Data
     title = data.get("title") or data.get("name") or "N/A"
@@ -364,7 +364,7 @@ def generate_html(data: dict, links: list, user_id: int):
             cast_html += f'<div class="cast-member"><img src="{pic}"><p>{member["name"]}</p></div>'
         cast_html += '</div>'
 
-    # 🔥 Buttons Logic (No Gibberish, Just Clean HTML)
+    # 🔥 Buttons Logic
     download_blocks_html = ""
     for link in links:
         lbl = link['label']
@@ -393,15 +393,22 @@ def generate_html(data: dict, links: list, user_id: int):
         </div>
         """
 
+    # 🛑 GHOST ELEMENT: To trick the template into hiding this instead of the poster
+    ghost_element = '<div style="height:1px; width:1px; overflow:hidden; opacity:0; margin-bottom: -1px;">&nbsp;</div>'
+
+    # 🛑 FORCE POSTER STYLE: Using !important to override template's display:none
+    poster_style = "width: 160px; height: auto; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); display: block !important; opacity: 1 !important; visibility: visible !important;"
+
     final_html = f"""
 {schema_markup}
+{ghost_element}
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
 <div class="movie-post-wrapper">
     
-    <!-- Header with Fixed Image -->
+    <!-- Header with Forced Visible Image -->
     <div class="movie-header">
         <div class="poster-wrapper">
-            <img src="{poster_url}" class="main-poster">
+            <img src="{poster_url}" class="main-poster" style="{poster_style}">
         </div>
         <div class="movie-info">
             <h1>{title} ({year})</h1>
@@ -461,7 +468,7 @@ def generate_html(data: dict, links: list, user_id: int):
         /* Base Styles */
         .movie-post-wrapper {{ font-family: 'Poppins', sans-serif; color: #333; max-width: 800px; margin: auto; background: #fff; padding: 10px; }}
         
-        /* 🔥 FIXED HEADER & IMAGE CSS 🔥 */
+        /* 🔥 FIXED HEADER CSS 🔥 */
         .movie-header {{ 
             display: flex; 
             flex-direction: row; 
@@ -480,13 +487,7 @@ def generate_html(data: dict, links: list, user_id: int):
         }}
 
         .poster-wrapper {{ flex-shrink: 0; }}
-        .main-poster {{ 
-            width: 160px; 
-            height: auto; 
-            border-radius: 10px; 
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2); 
-            display: block; /* Ensures visibility */
-        }}
+        /* .main-poster style moved to inline HTML for override power */
 
         .movie-info {{ flex: 1; }}
         .movie-info h1 {{ font-size: 24px; font-weight: 800; color: #2d3436; margin: 0 0 10px 0; line-height: 1.2; }}
