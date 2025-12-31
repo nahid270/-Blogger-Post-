@@ -171,7 +171,7 @@ def create_paste_link(content: str):
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "✅ Final Bot (Chapter Poster + Auto Redirect) is running!"
+    return "✅ Final Bot (RGB & Auto Redirect) is running!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
@@ -291,13 +291,13 @@ def generate_formatted_caption(data: dict):
         
     return caption_text
 
-# 🔥🔥🔥 REPLACED: CHAPTER POSTER, AUTO REDIRECT & BANNER 🔥🔥🔥
+# 🔥🔥🔥 REPLACED: FIXED IMAGE, AUTO REDIRECT & BANNER INJECTION 🔥🔥🔥
 def generate_html(data: dict, links: list, user_id: int):
     ad_link = user_ad_links.get(user_id, DEFAULT_AD_LINK)
     banner_code = user_banners.get(user_id, "") 
     
-    TIMER_SECONDS = 5  # টাইমার ১০ সেকেন্ড
-    TELEGRAM_LINK = "https://t.me/+6hvCoblt6CxhZjhl"
+    TIMER_SECONDS = 10  # টাইমার ১০ সেকেন্ড
+    TELEGRAM_LINK = "https://t.me/YourChannelLink"
     
     # Extract Data
     title = data.get("title") or data.get("name") or "N/A"
@@ -306,20 +306,12 @@ def generate_html(data: dict, links: list, user_id: int):
     overview = data.get("overview", "No overview available.")
     rating = f"{data.get('vote_average', 0):.1f}"
     
-    # 1. Vertical Poster (For Home Page Thumbnail - Hidden on Post)
-    if data.get('poster_path'):
+    if data.get('manual_poster_url'):
+        poster_url = data['manual_poster_url']
+    elif data.get('poster_path'):
         poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
     else:
         poster_url = "https://via.placeholder.com/400x600.png?text=No+Poster"
-
-    # 2. Backdrop/Chapter Poster (For Details Page Header - Visible)
-    if data.get('backdrop_path'):
-        backdrop_url = f"https://image.tmdb.org/t/p/original{data['backdrop_path']}"
-    elif data.get('manual_poster_url'):
-        backdrop_url = data['manual_poster_url']
-    else:
-        # Fallback if no backdrop: Use poster but centered
-        backdrop_url = poster_url
 
     # Schema Markup
     schema_markup = f"""
@@ -372,7 +364,7 @@ def generate_html(data: dict, links: list, user_id: int):
             cast_html += f'<div class="cast-member"><img src="{pic}"><p>{member["name"]}</p></div>'
         cast_html += '</div>'
 
-    # 🔥 Buttons Logic
+    # 🔥 Buttons Logic (No Gibberish, Just Clean HTML)
     download_blocks_html = ""
     for link in links:
         lbl = link['label']
@@ -403,33 +395,22 @@ def generate_html(data: dict, links: list, user_id: int):
 
     final_html = f"""
 {schema_markup}
-
-<!-- 1. HIDDEN VERTICAL POSTER (For Home Page Thumbnail Only) -->
-<!-- The template will pick this up but we hide it on the details page -->
-<div class="hidden-thumbnail" style="display:none; visibility:hidden; height:0; width:0; overflow:hidden;">
-    <img src="{poster_url}" alt="{title} Thumbnail">
-</div>
-
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
 <div class="movie-post-wrapper">
     
-    <!-- 2. VISIBLE CHAPTER POSTER (Backdrop Header) -->
-    <div class="chapter-header" style="background-image: url('{backdrop_url}');">
-        <div class="chapter-overlay">
-            <div class="chapter-info">
-                <h1>{title}</h1>
-                <div class="chapter-meta">
-                    <span class="c-badge">{year}</span>
-                    <span class="c-badge star">⭐ {rating}</span>
-                    <span class="c-badge">{language}</span>
-                </div>
-            </div>
+    <!-- Header with Fixed Image -->
+    <div class="movie-header">
+        <div class="poster-wrapper">
+            <img src="{poster_url}" class="main-poster">
         </div>
-    </div>
-    
-    <!-- Movie Info -->
-    <div class="info-container">
-        <p class="overview"><strong>Plot:</strong> {overview}</p>
+        <div class="movie-info">
+            <h1>{title} ({year})</h1>
+            <div class="badges">
+                <span class="badge lang">{language}</span>
+                <span class="badge imdb">⭐ {rating}/10</span>
+            </div>
+            <p class="overview">{overview}</p>
+        </div>
     </div>
     
     {banner_section}
@@ -478,59 +459,43 @@ def generate_html(data: dict, links: list, user_id: int):
 
     <style>
         /* Base Styles */
-        .movie-post-wrapper {{ font-family: 'Poppins', sans-serif; color: #333; max-width: 800px; margin: auto; background: #fff; padding-bottom: 20px; }}
+        .movie-post-wrapper {{ font-family: 'Poppins', sans-serif; color: #333; max-width: 800px; margin: auto; background: #fff; padding: 10px; }}
         
-        /* 🔥 CHAPTER POSTER CSS 🔥 */
-        .chapter-header {{
-            position: relative;
-            width: 100%;
-            height: 0;
-            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
-            background-size: cover;
-            background-position: center;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        /* 🔥 FIXED HEADER & IMAGE CSS 🔥 */
+        .movie-header {{ 
+            display: flex; 
+            flex-direction: row; 
+            gap: 20px; 
+            background: #fff; 
+            padding: 15px; 
+            border-radius: 15px; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.05);
             margin-bottom: 20px;
         }}
-        .chapter-overlay {{
-            position: absolute;
-            bottom: 0; left: 0; right: 0;
-            background: linear-gradient(to top, rgba(0,0,0,0.9) 10%, rgba(0,0,0,0) 100%);
-            padding: 20px;
-            display: flex;
-            align-items: flex-end;
-            height: 100%;
-        }}
-        .chapter-info h1 {{
-            color: #fff;
-            margin: 0 0 10px 0;
-            font-size: 28px;
-            font-weight: 800;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-            line-height: 1.2;
-        }}
-        .chapter-meta {{ display: flex; gap: 10px; }}
-        .c-badge {{
-            background: rgba(255,255,255,0.2);
-            backdrop-filter: blur(5px);
-            color: #fff;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: bold;
-            border: 1px solid rgba(255,255,255,0.3);
-        }}
-        .star {{ color: #ffd700; }}
         
-        .info-container {{ padding: 0 10px; }}
-        .overview {{ font-size: 15px; line-height: 1.6; color: #555; }}
-        
-        /* Mobile Adjustments for Header */
+        /* Mobile Responsive Header */
         @media (max-width: 600px) {{
-            .chapter-info h1 {{ font-size: 20px; }}
-            .c-badge {{ font-size: 11px; padding: 4px 10px; }}
+            .movie-header {{ flex-direction: column; align-items: center; text-align: center; }}
+            .poster-wrapper {{ width: 100%; max-width: 200px; margin: 0 auto; }}
         }}
+
+        .poster-wrapper {{ flex-shrink: 0; }}
+        .main-poster {{ 
+            width: 160px; 
+            height: auto; 
+            border-radius: 10px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2); 
+            display: block; /* Ensures visibility */
+        }}
+
+        .movie-info {{ flex: 1; }}
+        .movie-info h1 {{ font-size: 24px; font-weight: 800; color: #2d3436; margin: 0 0 10px 0; line-height: 1.2; }}
+        .overview {{ font-size: 14px; color: #636e72; line-height: 1.6; text-align: justify; }}
+        
+        .badges {{ margin-bottom: 15px; }}
+        .badge {{ padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; margin-right: 5px; }}
+        .lang {{ background: #e3f2fd; color: #0984e3; }} 
+        .imdb {{ background: #fff3e0; color: #e67e22; }}
         
         /* Gallery & Video */
         .video-container {{ position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin-top: 30px; border-radius: 12px; }}
@@ -723,10 +688,10 @@ def generate_image(data: dict):
 async def start_command(client, message: Message):
     user_conversations.pop(message.from_user.id, None)
     await message.reply_text(
-        f"👋 **Welcome to the Movie & Series Bot (Chapter Edition)!**\n\n"
+        f"👋 **Welcome to the Movie & Series Bot (Final Ultimate)!**\n\n"
         f"**✨ Updates:**\n"
-        f"✅ Chapter Style Poster (No Disappearing!)\n"
         f"✅ Auto-Redirect & Timer\n"
+        f"✅ Fixed Mobile Images\n"
         f"✅ Clean Gaming Buttons\n"
         f"✅ Banner Ads Injection\n\n"
         f"**Commands:**\n"
